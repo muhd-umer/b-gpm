@@ -4,7 +4,12 @@ __pycache__/
 *$py.class
 misc/
 .vscode/
-
+wandb/
+wandb/*
+results/
+results/*
+eval_rewardbench/results/
+eval_rewardbench/results/*
 
 # C extensions
 *.so
