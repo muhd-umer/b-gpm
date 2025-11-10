@@ -190,7 +190,6 @@ class GPMPipeline:
         self.tau = tau
 
         config = AutoConfig.from_pretrained(model_name_or_path, trust_remote_code=True)
-        config._attn_implementation = "flash_attention_2"
         base_class = AutoModel._model_mapping[type(config)]
         base_causal_class = AutoModelForCausalLM._model_mapping.get(type(config), None)
 
@@ -226,6 +225,8 @@ class GPMPipeline:
             config=config,
             trust_remote_code=True,
             torch_dtype=torch.bfloat16 if bf16 else "auto",
+            device_map=device,
+            attn_implementation="flash_attention_2",
         )
 
         # configure tokenizer
