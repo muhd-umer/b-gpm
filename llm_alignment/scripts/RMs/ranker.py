@@ -1,5 +1,5 @@
 """
-    RewardModel and Ranker class for ranking candidates based on pairwise comparisons.
+RewardModel and Ranker class for ranking candidates based on pairwise comparisons.
 """
 
 from RMs.reward_model import RewardModel

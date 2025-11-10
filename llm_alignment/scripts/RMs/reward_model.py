@@ -1,5 +1,5 @@
 """
-    Abstract class for reward models.
+Abstract class for reward models.
 """
 
 from typing import List
