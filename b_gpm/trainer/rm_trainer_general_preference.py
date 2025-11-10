@@ -478,7 +478,8 @@ class GeneralPreferenceRewardTrainer(ABC):
         input_ids, att_masks = self.concatenated_inputs(
             chosen_ids, c_mask, reject_ids, r_mask
         )
-        all_values, outputs = model.custom_forward(
+        underlying_model = model.module if hasattr(model, 'module') else model
+        all_values, outputs = underlying_model.custom_forward(
             input_ids, attention_mask=att_masks, return_output=return_output
         )
         chosen_rewards = all_values[: chosen_ids.shape[0]]
