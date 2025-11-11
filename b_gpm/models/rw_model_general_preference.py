@@ -50,6 +50,17 @@ def get_reward_model(
     """
 
     config = AutoConfig.from_pretrained(model_name_or_path, trust_remote_code=True)
+    if not load_in_4bit and getattr(config, "quantization_config", None):
+        logger.info(
+            "Detected quantization_config in checkpoint config, but load_in_4bit=False. "
+            "Removing quantization metadata to keep loading unquantized base weights."
+        )
+        try:
+            delattr(config, "quantization_config")
+        except AttributeError:
+            config.quantization_config = None
+        if hasattr(config, "_pre_quantization_dtype"):
+            delattr(config, "_pre_quantization_dtype")
     config._attn_implementation = (
         "flash_attention_2" if use_flash_attention_2 else "eager"
     )
