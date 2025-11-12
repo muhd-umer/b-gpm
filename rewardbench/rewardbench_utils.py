@@ -41,7 +41,6 @@ class CustomLeftPadRewardBenchPipeline:
             rewards, outputs = self.model.custom_forward(
                 **inputs, return_output=return_prompt
             )
-        # For deterministic inference, use the mean embedding instead of sampling
         if isinstance(rewards, BayesianEmbedding):
             rewards = rewards.mean
 

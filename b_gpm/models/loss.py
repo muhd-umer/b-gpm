@@ -606,9 +606,7 @@ class BayesianGPMLoss(nn.Module):
         var_i = torch.exp(chosen_embed.logvar)
         var_j = torch.exp(reject_embed.logvar)
 
-        # Apply swap permutation: [a0, a1, a2, a3, ...] -> [a1, a0, a3, a2, ...]
         def swap_pairs(tensor):
-            # Reshape to (batch, num_blocks, 2), swap last dim, reshape back
             batch_size = tensor.shape[0]
             num_blocks = self.value_head_dim // 2
             reshaped = tensor.view(batch_size, num_blocks, 2)
@@ -618,7 +616,6 @@ class BayesianGPMLoss(nn.Module):
         swapped_var_j = swap_pairs(var_j)
         swapped_var_i = swap_pairs(var_i)
 
-        # Compute the three terms
         term1 = (mu_i.pow(2) * swapped_var_j).sum(dim=-1)
         term2 = (mu_j.pow(2) * swapped_var_i).sum(dim=-1)
         term3 = (var_i * swapped_var_j).sum(dim=-1)
