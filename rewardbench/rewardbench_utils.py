@@ -1,4 +1,5 @@
 import torch
+from b_gpm.models.bayesian_types import BayesianEmbedding
 
 
 def disable_dropout_in_model(model: torch.nn.Module) -> None:
@@ -40,6 +41,8 @@ class CustomLeftPadRewardBenchPipeline:
             rewards, outputs = self.model.custom_forward(
                 **inputs, return_output=return_prompt
             )
+        if isinstance(rewards, BayesianEmbedding):
+            rewards = rewards.sample
 
         chosen_response_len_list = []
         if return_prompt:

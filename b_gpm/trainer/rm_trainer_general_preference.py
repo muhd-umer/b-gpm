@@ -34,7 +34,9 @@ from b_gpm.models import (
 from b_gpm.models import (
     HighDimGeneralPreferenceRegressionLoss,
     HighDimGeneralPreferenceMoELoss,
+    BayesianGPMLoss,
 )
+from b_gpm.models.bayesian_types import BayesianEmbedding
 
 
 class GeneralPreferenceRewardTrainer(ABC):
@@ -68,6 +70,7 @@ class GeneralPreferenceRewardTrainer(ABC):
         is_general_preference: bool = False,
         tau: float = 0.1,
         value_head_dim: int = 2,
+        is_bayesian_gpm: bool = False,
     ) -> None:
         super().__init__()
         self.strategy = strategy
@@ -79,9 +82,29 @@ class GeneralPreferenceRewardTrainer(ABC):
         self.optimizer = optim
         self.tokenizer = tokenizer
         self.args = strategy.args
-        self.is_general_preference = is_general_preference
+        self.is_bayesian_gpm = is_bayesian_gpm
+        self.is_general_preference = is_general_preference or self.is_bayesian_gpm
+        self.bayesian_kl_warmup_steps = getattr(
+            self.args, "bayesian_kl_warmup_steps", 0
+        )
+        self.bayesian_max_kl_weight = getattr(self.args, "bayesian_max_kl_weight", 1.0)
+        self.bayesian_prior_variance = getattr(
+            self.args, "bayesian_prior_variance", 1.0
+        )
 
-        if is_general_preference:
+        if self.is_bayesian_gpm:
+            assert (
+                value_head_dim % 2 == 0
+            ), "Dimension of value head for Bayesian GPM must be even."
+            self.loss_fn = BayesianGPMLoss(
+                model=self.model,
+                value_head_dim=value_head_dim,
+                tau=tau,
+                prior_variance=self.bayesian_prior_variance,
+                use_prompt_head=self.args.add_prompt_head,
+            )
+            self.strategy.print("Bayesian GPM Loss")
+        elif self.is_general_preference:
             if value_head_dim == 2 and not self.args.add_prompt_head:
                 self.loss_fn = GeneralPreferenceLoss(tau)
                 self.strategy.print("GeneralPreference Loss")
@@ -192,17 +215,32 @@ class GeneralPreferenceRewardTrainer(ABC):
                 else:
                     margin = None
 
-                return_output = (
-                    True
-                    if isinstance(
-                        self.loss_fn, HighDimGeneralPreferenceRegressionMoELoss
+                needs_moe = isinstance(
+                    self.loss_fn, HighDimGeneralPreferenceRegressionMoELoss
+                ) or isinstance(self.loss_fn, HighDimGeneralPreferenceMoELoss)
+                return_output = bool(
+                    needs_moe
+                    or (
+                        isinstance(self.loss_fn, BayesianGPMLoss)
+                        and self.loss_fn.use_prompt_head
                     )
-                    or isinstance(self.loss_fn, HighDimGeneralPreferenceMoELoss)
-                    else False
                 )
-                chosen_reward, reject_reward, outputs = self.concatenated_forward(
-                    self.model, chosen_ids, c_mask, reject_ids, r_mask, return_output
+                (
+                    chosen_reward,
+                    reject_reward,
+                    outputs,
+                    extras,
+                ) = self.concatenated_forward(
+                    self.model,
+                    chosen_ids,
+                    c_mask,
+                    reject_ids,
+                    r_mask,
+                    return_output,
                 )
+                bayesian_embeddings = None
+                if isinstance(extras, dict):
+                    bayesian_embeddings = extras.get("bayesian_embeddings")
                 # loss function
                 if self.compute_fp32_loss:
                     chosen_reward = chosen_reward.float()
@@ -230,6 +268,31 @@ class GeneralPreferenceRewardTrainer(ABC):
                         reject_reward,
                         prompt_hidden_state.to(torch.cuda.current_device()),
                         margin,
+                    )
+                elif isinstance(self.loss_fn, BayesianGPMLoss):
+                    prompt_hidden_state = None
+                    if self.loss_fn.use_prompt_head:
+                        chosen_last_hidden_states = outputs["last_hidden_state"][
+                            : chosen_ids.shape[0], :, :
+                        ]
+                        prompt_end_index = (
+                            chosen_last_hidden_states.size(1) - chosen_response_len - 1
+                        )
+                        prompt_end_index_expanded = prompt_end_index.unsqueeze(
+                            -1
+                        ).expand(-1, -1, chosen_last_hidden_states.size(-1))
+                        prompt_hidden_state = torch.gather(
+                            chosen_last_hidden_states,
+                            dim=1,
+                            index=prompt_end_index_expanded,
+                        ).squeeze(1)
+                    preference_loss, prob = self.loss_fn(
+                        chosen_reward,
+                        reject_reward,
+                        margin,
+                        prompt_hidden_states=prompt_hidden_state,
+                        bayesian_embeddings=bayesian_embeddings,
+                        kl_beta=self._current_kl_beta(global_step),
                     )
                 else:
                     preference_loss, prob = self.loss_fn(
@@ -420,9 +483,17 @@ class GeneralPreferenceRewardTrainer(ABC):
                     )
                     else False
                 )
-                chosen_reward, reject_reward, outputs = self.concatenated_forward(
+                (
+                    chosen_reward,
+                    reject_reward,
+                    outputs,
+                    extras,
+                ) = self.concatenated_forward(
                     self.model, chosen_ids, c_mask, reject_ids, r_mask, return_output
                 )
+                bayesian_embeddings = None
+                if isinstance(extras, dict):
+                    bayesian_embeddings = extras.get("bayesian_embeddings")
 
                 if isinstance(self.loss_fn, HighDimGeneralPreferenceRegressionMoELoss):
                     chosen_last_hidden_states = outputs["last_hidden_state"][
@@ -437,6 +508,31 @@ class GeneralPreferenceRewardTrainer(ABC):
                     ).squeeze(1)
                     preference_loss, prob = self.loss_fn(
                         chosen_reward, reject_reward, prompt_hidden_state, margin
+                    )
+                elif isinstance(self.loss_fn, BayesianGPMLoss):
+                    prompt_hidden_state = None
+                    if self.loss_fn.use_prompt_head:
+                        chosen_last_hidden_states = outputs["last_hidden_state"][
+                            : chosen_ids.shape[0], :, :
+                        ]
+                        prompt_len = (
+                            chosen_last_hidden_states.size(1) - chosen_response_len
+                        )
+                        prompt_len_expanded = prompt_len.unsqueeze(-1).expand(
+                            -1, -1, chosen_last_hidden_states.size(-1)
+                        )
+                        prompt_hidden_state = torch.gather(
+                            chosen_last_hidden_states,
+                            dim=1,
+                            index=prompt_len_expanded,
+                        ).squeeze(1)
+                    preference_loss, prob = self.loss_fn(
+                        chosen_reward,
+                        reject_reward,
+                        margin,
+                        prompt_hidden_states=prompt_hidden_state,
+                        bayesian_embeddings=bayesian_embeddings,
+                        kl_beta=self.bayesian_max_kl_weight,
                     )
                 else:
                     preference_loss, prob = self.loss_fn(
@@ -478,14 +574,32 @@ class GeneralPreferenceRewardTrainer(ABC):
         input_ids, att_masks = self.concatenated_inputs(
             chosen_ids, c_mask, reject_ids, r_mask
         )
-        underlying_model = model.module if hasattr(model, 'module') else model
+        underlying_model = model.module if hasattr(model, "module") else model
         all_values, outputs = underlying_model.custom_forward(
             input_ids, attention_mask=att_masks, return_output=return_output
         )
-        chosen_rewards = all_values[: chosen_ids.shape[0]]
-        rejected_rewards = all_values[chosen_ids.shape[0] :]
 
-        return chosen_rewards, rejected_rewards, outputs
+        extras = {}
+        if isinstance(all_values, BayesianEmbedding):
+            batch_size = chosen_ids.shape[0]
+            chosen_embedding = BayesianEmbedding(
+                sample=all_values.sample[:batch_size],
+                mean=all_values.mean[:batch_size],
+                logvar=all_values.logvar[:batch_size],
+            )
+            reject_embedding = BayesianEmbedding(
+                sample=all_values.sample[batch_size:],
+                mean=all_values.mean[batch_size:],
+                logvar=all_values.logvar[batch_size:],
+            )
+            chosen_rewards = chosen_embedding.sample
+            rejected_rewards = reject_embedding.sample
+            extras["bayesian_embeddings"] = (chosen_embedding, reject_embedding)
+        else:
+            chosen_rewards = all_values[: chosen_ids.shape[0]]
+            rejected_rewards = all_values[chosen_ids.shape[0] :]
+
+        return chosen_rewards, rejected_rewards, outputs, extras
 
     def concatenated_inputs(self, chosen_ids, c_mask, reject_ids, r_mask):
         """Concatenate the chosen and rejected inputs into a single tensor.
@@ -532,3 +646,9 @@ class GeneralPreferenceRewardTrainer(ABC):
             dim=0,
         )
         return inputs_ids, att_masks
+
+    def _current_kl_beta(self, global_step: int) -> float:
+        if self.bayesian_kl_warmup_steps <= 0:
+            return float(self.bayesian_max_kl_weight)
+        progress = min(1.0, global_step / float(self.bayesian_kl_warmup_steps))
+        return progress * float(self.bayesian_max_kl_weight)

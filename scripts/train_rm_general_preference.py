@@ -30,6 +30,7 @@ def train(args):
         ds_config=strategy.get_ds_train_config(),
         init_value_head=True,
         is_general_preference=args.is_general_preference,
+        is_bayesian_gpm=args.is_bayesian_gpm,
         value_head_dim=args.value_head_dim,
         init_prompt_head=True,
         add_prompt_head=args.add_prompt_head,
@@ -164,6 +165,7 @@ def train(args):
         scheduler=scheduler,
         max_epochs=args.max_epochs,
         is_general_preference=args.is_general_preference,
+        is_bayesian_gpm=args.is_bayesian_gpm,
         tau=args.general_preference_tau,
         value_head_dim=args.value_head_dim,
     )
@@ -241,6 +243,12 @@ if __name__ == "__main__":
         help="Whether to use General Preference model. Default to False (Bradley Terry model by default).",
     )
     parser.add_argument(
+        "--is_bayesian_gpm",
+        action="store_true",
+        default=False,
+        help="Enable the Bayesian GPM value head and loss.",
+    )
+    parser.add_argument(
         "--general_preference_tau",
         type=float,
         default=0.1,
@@ -311,6 +319,24 @@ if __name__ == "__main__":
         action="store_true",
         default=False,
         help="Add a prompt head to the model if set. Default to False.",
+    )
+    parser.add_argument(
+        "--bayesian_kl_warmup_steps",
+        type=int,
+        default=0,
+        help="Number of warmup steps for annealing the KL weight in Bayesian GPM.",
+    )
+    parser.add_argument(
+        "--bayesian_max_kl_weight",
+        type=float,
+        default=1.0,
+        help="Maximum multiplier applied to the KL term after warmup.",
+    )
+    parser.add_argument(
+        "--bayesian_prior_variance",
+        type=float,
+        default=1.0,
+        help="Diagonal prior variance for Bayesian preference embeddings.",
     )
 
     # wandb pamameters

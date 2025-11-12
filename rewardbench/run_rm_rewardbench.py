@@ -164,6 +164,12 @@ def get_args():
         default=False,
         help="Whether to use General Preference model. Default to False (Bradley Terry model by default).",
     )
+    parser.add_argument(
+        "--is_bayesian_gpm",
+        action="store_true",
+        default=False,
+        help="Enable Bayesian GPM inference.",
+    )
     parser.add_argument("--bf16", action="store_true", default=False)
     parser.add_argument(
         "--model_name",
@@ -409,6 +415,7 @@ def main():
                 use_flash_attention_2=args.flash_attn,
                 bf16=args.bf16,
                 is_general_preference=args.is_general_preference,
+                is_bayesian_gpm=args.is_bayesian_gpm,
                 value_head_dim=args.value_head_dim,
                 add_prompt_head=args.add_prompt_head,
             )
@@ -454,7 +461,7 @@ def main():
                     )  # cast to float in case of bfloat16
                     score_rejected_batch = reject_reward.float().cpu().numpy().tolist()
 
-                    if args.is_general_preference:
+                    if args.is_general_preference or args.is_bayesian_gpm:
                         if args.value_head_dim == 2 and not hasattr(
                             reward_pipe.model, "prompt_head"
                         ):
@@ -536,7 +543,7 @@ def main():
                     )
 
                 # log results
-                if not args.is_general_preference:
+                if not (args.is_general_preference or args.is_bayesian_gpm):
                     [
                         results.append(1) if chosen > rejected else results.append(0)
                         for chosen, rejected in zip(

@@ -24,6 +24,7 @@ deepspeed --force_multi --hostfile hostfile train_rm_general_preference.py \
      --train_split_ratio 1 \
      --save_best_model 2 \
      --is_general_preference \
+     --is_bayesian_gpm \
      --use_wandb True 
 
      # --is_general_preference \
@@ -31,8 +32,6 @@ deepspeed --force_multi --hostfile hostfile train_rm_general_preference.py \
      # --is_custom_dataset \
      # --return_prompt_length \
      # --add_prompt_head \
-
-
 
 
 

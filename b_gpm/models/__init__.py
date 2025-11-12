@@ -16,6 +16,7 @@ from .loss import (
     HighDimGeneralPreferenceRegressionLoss,
     HighDimGeneralPreferenceRegressionMoELoss,
     HighDimGeneralPreferenceMoELoss,
+    BayesianGPMLoss,
 )
 
 from .rw_model_general_preference import get_reward_model

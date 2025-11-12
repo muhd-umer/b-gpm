@@ -9,7 +9,7 @@ from peft.tuners.lora import LoraLayer
 from transformers import AutoConfig, AutoModel, BitsAndBytesConfig, AutoModelForCausalLM
 from transformers.integrations import HfDeepSpeedConfig
 from b_gpm.utils.logging import init_logger
-import torch.nn.functional as F
+from b_gpm.models.bayesian_types import BayesianEmbedding
 import math
 
 logger = init_logger(__name__)
@@ -31,6 +31,7 @@ def get_reward_model(
     init_prompt_head: bool = False,
     add_prompt_head: bool = False,
     is_general_preference: bool = False,
+    is_bayesian_gpm: bool = False,
     value_head_dim: int = 2,
     **kwargs,
 ) -> nn.Module:
@@ -43,6 +44,7 @@ def get_reward_model(
         ds_config (dict, optional): Deepspeed config, used to automatically splitting the model onto multiple gpus during from_pretrained when ZeRO-3 enabled. Defaults to None.
         init_value_head (bool, optional): Whether to initialize the value head weights. Defaults to False.
         is_general_preference (bool, optional): Whether to use General Preference model. Defaults to False (Bradley Terry model by default).
+        is_bayesian_gpm (bool, optional): Whether to enable Bayesian GPM head. Implies is_general_preference.
         value_head_dim (int, optional): Dimension of value head for General Prefernce model. Ignored by the Bradley Terry model. Defaults to 2.
 
     Returns:
@@ -69,7 +71,8 @@ def get_reward_model(
     cls_class = _get_reward_model(
         base_causal_class,
         base_class,
-        is_general_preference,
+        is_general_preference or is_bayesian_gpm,
+        is_bayesian_gpm,
         add_prompt_head,
         value_head_dim,
     )
@@ -158,6 +161,7 @@ def _get_reward_model(
     base_causal_model,
     base_llm_model,
     is_general_preference: bool = False,
+    is_bayesian_gpm: bool = False,
     add_prompt_head: bool = False,
     value_head_dim: int = 2,
 ):
@@ -167,20 +171,39 @@ def _get_reward_model(
         def __init__(self, config: AutoConfig):
             super().__init__(config)
             setattr(self, self.base_model_prefix, base_llm_model(config))
-            if not is_general_preference:
+            self.value_head_dim = value_head_dim
+            use_general_head = is_general_preference or is_bayesian_gpm
+            if not use_general_head:
                 self.value_head = nn.Linear(config.hidden_size, 1, bias=False)
             else:
+                head_out_dim = value_head_dim * 2 if is_bayesian_gpm else value_head_dim
                 self.value_head = nn.Linear(
-                    config.hidden_size, value_head_dim, bias=False
+                    config.hidden_size, head_out_dim, bias=False
                 )
                 if add_prompt_head:
                     self.prompt_head = nn.Linear(
                         config.hidden_size, value_head_dim // 2, bias=False
                     )
 
-            self.is_general_preference = is_general_preference
+            self.is_general_preference = use_general_head
+            self.is_bayesian_gpm = is_bayesian_gpm
 
             self.post_init()
+
+        @staticmethod
+        def _select_by_attention(
+            tensor: torch.Tensor, attention_mask: torch.Tensor
+        ) -> torch.Tensor:
+            if tensor.dim() != 3:
+                raise ValueError("Expected 3D tensor for selection.")
+            if tensor.size(1) != attention_mask.size(1):
+                raise ValueError("Sequence length mismatch for attention mask.")
+            seq_len = attention_mask.size(1)
+            eos_indices = (
+                seq_len - 1 - attention_mask.long().fliplr().argmax(dim=1, keepdim=True)
+            )
+            gather_index = eos_indices.unsqueeze(-1).expand(-1, 1, tensor.size(-1))
+            return tensor.gather(dim=1, index=gather_index).squeeze(1)
 
         def custom_forward(
             self,
@@ -212,35 +235,12 @@ def _get_reward_model(
                 else:
                     return reward, None
             else:
-                values = self.value_head(last_hidden_states)
-                # left padding in training mode
-                if self.training:
-                    reward = values[:, -1, :]
-                    # reward =  F.normalize(reward, p=2, dim=-1)  # Shape will be [batch_size, value_head_dim]
-                    # if not hasattr(self, 'prompt_head'):
-                    #     reward = F.normalize(reward, p=2, dim=-1)
-                else:
-                    eos_indices = (
-                        attention_mask.size(1)
-                        - 1
-                        - attention_mask.long().fliplr().argmax(dim=1)
-                    )
-                    eos_indices = eos_indices.unsqueeze(
-                        1
-                    )  # Change shape to [batch_size, 1]
-                    reward_list = []
-                    for dim in range(value_head_dim):
-                        reward_list.append(
-                            values[:, :, dim].gather(dim=1, index=eos_indices)
-                        )
-                    reward = torch.cat(reward_list, dim=1)
-                    # reward =  F.normalize(reward, p=2, dim=-1)  # Shape will be [batch_size, value_head_dim]
-                    # if not hasattr(self, 'prompt_head'):
-                    #     reward =  F.normalize(reward, p=2, dim=-1)  # Shape will be [batch_size, value_head_dim]
+                reward = self._extract_preference_embeddings(
+                    attention_mask, last_hidden_states
+                )
                 if return_output:
                     return reward, outputs
-                else:
-                    return reward, None
+                return reward, None
 
         def create_skew_symmetric_block_matrix(
             self, dim, device, dtype, prompt_hidden_states
@@ -291,5 +291,28 @@ def _get_reward_model(
                 )
 
             return batch_R_matrices
+
+        def _extract_preference_embeddings(
+            self, attention_mask: torch.Tensor, last_hidden_states: torch.Tensor
+        ) -> torch.Tensor:
+            values = self.value_head(last_hidden_states)
+            if not self.is_bayesian_gpm:
+                if self.training:
+                    return values[:, -1, :]
+                return self._select_by_attention(values, attention_mask)
+
+            mu, logvar = torch.chunk(values, 2, dim=-1)
+            if self.training:
+                mu = mu[:, -1, :]
+                logvar = logvar[:, -1, :]
+            else:
+                mu = self._select_by_attention(mu, attention_mask)
+                logvar = self._select_by_attention(logvar, attention_mask)
+
+            logvar = torch.clamp(logvar, min=-10.0, max=10.0)
+            std = torch.exp(0.5 * logvar)
+            eps = torch.randn_like(std)
+            sample = mu + eps * std
+            return BayesianEmbedding(sample=sample, mean=mu, logvar=logvar)
 
     return CustomRewardModel

@@ -5,6 +5,7 @@ from torch.utils.data import DataLoader, DistributedSampler
 from b_gpm.datasets import GeneralRewardDataset
 from b_gpm.utils import blending_datasets, get_strategy, get_tokenizer
 from b_gpm.models import get_reward_model
+from b_gpm.models.bayesian_types import BayesianEmbedding
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
@@ -144,6 +145,7 @@ def batch_rm_inference(args):
         use_flash_attention_2=args.flash_attn,
         bf16=args.bf16,
         is_general_preference=args.is_general_preference,
+        is_bayesian_gpm=args.is_bayesian_gpm,
         value_head_dim=args.value_head_dim,
     )
     # configure tokenizer
@@ -194,7 +196,8 @@ def batch_rm_inference(args):
         disable=not strategy.is_rank_0(),
     )
 
-    if args.is_general_preference:
+    use_general_preference = args.is_general_preference or args.is_bayesian_gpm
+    if use_general_preference:
         if args.value_head_dim == 2:
             loss_fn = GeneralPreferenceLoss(tau=args.general_preference_tau)
             strategy.print("General Preference Loss")
@@ -221,11 +224,15 @@ def batch_rm_inference(args):
             chosen_masks = chosen_masks.squeeze(1).to(torch.cuda.current_device())
 
             chosen_rewards, _ = model.custom_forward(chosen_ids, chosen_masks)
+            if isinstance(chosen_rewards, BayesianEmbedding):
+                chosen_rewards = chosen_rewards.sample
 
             reject_ids = reject_ids.squeeze(1).to(torch.cuda.current_device())
             reject_masks = reject_masks.squeeze(1).to(torch.cuda.current_device())
 
             reject_rewards, _ = model.custom_forward(reject_ids, reject_masks)
+            if isinstance(reject_rewards, BayesianEmbedding):
+                reject_rewards = reject_rewards.sample
 
             preference_loss, prob, result = loss_fn(chosen_rewards, reject_rewards)
             print("chosen_rewards", chosen_rewards)
@@ -279,6 +286,12 @@ if __name__ == "__main__":
         action="store_true",
         default=False,
         help="Whether to use General Preference model. Default to False (Bradley Terry model by default).",
+    )
+    parser.add_argument(
+        "--is_bayesian_gpm",
+        action="store_true",
+        default=False,
+        help="Whether to load the Bayesian GPM reward head.",
     )
     parser.add_argument(
         "--general_preference_tau",

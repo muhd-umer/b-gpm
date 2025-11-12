@@ -1,6 +1,8 @@
+from typing import Optional, Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from .bayesian_types import BayesianEmbedding
 
 
 class SFTVanillaLoss(nn.Module):
@@ -456,6 +458,126 @@ class HighDimGeneralPreferenceLoss(nn.Module):
             loss = -F.logsigmoid(result / self.tau)
             prob = F.sigmoid(result / self.tau)
         return loss.mean(), prob.mean()
+
+
+class BayesianGPMLoss(nn.Module):
+    """
+    Bayesian extension of the high-dimensional General Preference loss.
+    Combines the standard data-fidelity term with a KL divergence towards
+    a structured Gaussian prior over embeddings.
+    """
+
+    def __init__(
+        self,
+        model,
+        value_head_dim: int,
+        tau: float = 0.1,
+        prior_variance: float = 1.0,
+        use_prompt_head: bool = False,
+    ) -> None:
+        super().__init__()
+        self.model = model
+        self.value_head_dim = value_head_dim
+        self.tau = tau
+        self.use_prompt_head = use_prompt_head
+
+        prior = torch.full((value_head_dim,), prior_variance)
+        self.register_buffer("prior_variance", prior, persistent=False)
+        self.register_buffer(
+            "base_r_matrix",
+            (
+                self.create_skew_symmetric_block_matrix(value_head_dim)
+                if not use_prompt_head
+                else torch.empty(0)
+            ),
+            persistent=False,
+        )
+
+    @staticmethod
+    def create_skew_symmetric_block_matrix(dim: int) -> torch.Tensor:
+        matrix = torch.zeros((dim, dim))
+        for i in range(0, dim, 2):
+            matrix[i, i + 1] = -1
+            matrix[i + 1, i] = 1
+        return matrix
+
+    def forward(
+        self,
+        chosen_reward: torch.Tensor,
+        reject_reward: torch.Tensor,
+        margin: torch.Tensor = None,
+        *,
+        prompt_hidden_states: torch.Tensor = None,
+        bayesian_embeddings: Optional[
+            Tuple[BayesianEmbedding, BayesianEmbedding]
+        ] = None,
+        kl_beta: float = 1.0,
+    ) -> torch.Tensor:
+        if bayesian_embeddings is None:
+            raise ValueError("Bayesian embeddings are required for BayesianGPMLoss.")
+        chosen_embed, reject_embed = bayesian_embeddings
+        chosen_sample = chosen_embed.sample
+        reject_sample = reject_embed.sample
+
+        result = self._compute_scores(
+            chosen_sample, reject_sample, prompt_hidden_states
+        )
+        if margin is not None:
+            logits = (result - margin) / self.tau
+        else:
+            logits = result / self.tau
+        data_loss = -F.logsigmoid(logits)
+        prob = torch.sigmoid(logits)
+
+        kl = self._kl_divergence(chosen_embed) + self._kl_divergence(reject_embed)
+        loss = data_loss + kl_beta * kl
+
+        return loss.mean(), prob.mean()
+
+    def _kl_divergence(self, embedding: BayesianEmbedding) -> torch.Tensor:
+        variance = torch.exp(embedding.logvar)
+        prior_var = self.prior_variance.to(embedding.mean.device, embedding.mean.dtype)
+        kl = 0.5 * (
+            (variance + embedding.mean.pow(2)) / prior_var
+            - 1
+            + torch.log(prior_var)
+            - embedding.logvar
+        )
+        return kl.sum(dim=-1)
+
+    def _compute_scores(
+        self,
+        chosen_sample: torch.Tensor,
+        reject_sample: torch.Tensor,
+        prompt_hidden_states: torch.Tensor = None,
+    ) -> torch.Tensor:
+        if self.use_prompt_head:
+            if prompt_hidden_states is None:
+                raise ValueError(
+                    "Prompt hidden states are required when prompt head is enabled."
+                )
+            R_matrix = self.model.create_skew_symmetric_block_matrix(
+                self.value_head_dim,
+                chosen_sample.device,
+                chosen_sample.dtype,
+                prompt_hidden_states,
+            )
+            transformed_chosen = torch.bmm(
+                chosen_sample.view(chosen_sample.shape[0], 1, self.value_head_dim),
+                R_matrix.transpose(1, 2),
+            )
+            result = torch.bmm(
+                transformed_chosen,
+                reject_sample.view(reject_sample.shape[0], self.value_head_dim, 1),
+            )
+        else:
+            R_matrix = self.base_r_matrix.to(chosen_sample.device, chosen_sample.dtype)
+            transformed_chosen = torch.matmul(chosen_sample, R_matrix.T)
+            result = torch.bmm(
+                transformed_chosen.view(chosen_sample.shape[0], 1, self.value_head_dim),
+                reject_sample.view(reject_sample.shape[0], self.value_head_dim, 1),
+            )
+        return result.view(chosen_sample.shape[0])
 
 
 class HighDimGeneralPreferenceRegressionLoss(nn.Module):

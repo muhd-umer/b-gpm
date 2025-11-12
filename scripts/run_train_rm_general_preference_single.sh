@@ -24,7 +24,6 @@ deepspeed train_rm_general_preference.py \
      --add_pretrain_loss \
      --ptx_loss_coef 0.01 \
      --is_general_preference \
+     --is_bayesian_gpm \
      --train_split_ratio 0.98 \
      --save_best_model 2 
-
-

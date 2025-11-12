@@ -7,6 +7,7 @@ from transformers import AutoTokenizer
 import os
 from safetensors.torch import load_file
 from huggingface_hub import snapshot_download
+from b_gpm.models.bayesian_types import BayesianEmbedding
 
 
 def get_tokenizer(pretrain, model, padding_side="left", use_fast=True):
@@ -260,6 +261,8 @@ class GPMPipeline:
             rewards, outputs = self.model.custom_forward(
                 **inputs, return_output=return_prompt
             )
+        if isinstance(rewards, BayesianEmbedding):
+            rewards = rewards.sample
 
         chosen_response_len_list = []
         if return_prompt:
