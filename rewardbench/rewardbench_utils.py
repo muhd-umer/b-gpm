@@ -42,7 +42,7 @@ class CustomLeftPadRewardBenchPipeline:
                 **inputs, return_output=return_prompt
             )
         if isinstance(rewards, BayesianEmbedding):
-            rewards = rewards.mean
+            rewards = rewards.mean  # deterministic inference uses posterior mean
 
         chosen_response_len_list = []
         if return_prompt:
