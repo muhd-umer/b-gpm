@@ -309,10 +309,17 @@ def _get_reward_model(
                 mu = self._select_by_attention(mu, attention_mask)
                 logvar = self._select_by_attention(logvar, attention_mask)
 
+            # L2 normalize the mean embedding to maintain unit length constraint
+            mu = nn.functional.normalize(mu, p=2, dim=-1)
+
             logvar = torch.clamp(logvar, min=-10.0, max=10.0)
             std = torch.exp(0.5 * logvar)
             eps = torch.randn_like(std)
+
+            # Sample and normalize to maintain unit length constraint
             sample = mu + eps * std
+            sample = nn.functional.normalize(sample, p=2, dim=-1)
+
             return BayesianEmbedding(sample=sample, mean=mu, logvar=logvar)
 
     return CustomRewardModel

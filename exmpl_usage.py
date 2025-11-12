@@ -261,8 +261,9 @@ class GPMPipeline:
             rewards, outputs = self.model.custom_forward(
                 **inputs, return_output=return_prompt
             )
+        # For deterministic inference, use the mean embedding instead of sampling
         if isinstance(rewards, BayesianEmbedding):
-            rewards = rewards.sample
+            rewards = rewards.mean
 
         chosen_response_len_list = []
         if return_prompt:
