@@ -323,7 +323,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--bayesian_kl_warmup_steps",
         type=int,
-        default=0,
+        default=500,
         help="Number of warmup steps for annealing the KL weight in Bayesian GPM.",
     )
     parser.add_argument(
