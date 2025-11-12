@@ -586,11 +586,13 @@ class GeneralPreferenceRewardTrainer(ABC):
                 sample=all_values.sample[:batch_size],
                 mean=all_values.mean[:batch_size],
                 logvar=all_values.logvar[:batch_size],
+                raw_mean=all_values.raw_mean[:batch_size],
             )
             reject_embedding = BayesianEmbedding(
                 sample=all_values.sample[batch_size:],
                 mean=all_values.mean[batch_size:],
                 logvar=all_values.logvar[batch_size:],
+                raw_mean=all_values.raw_mean[batch_size:],
             )
             chosen_rewards = chosen_embedding.sample
             rejected_rewards = reject_embedding.sample

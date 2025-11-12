@@ -301,20 +301,22 @@ def _get_reward_model(
                     return values[:, -1, :]
                 return self._select_by_attention(values, attention_mask)
 
-            mu, logvar = torch.chunk(values, 2, dim=-1)
+            raw_mu, logvar = torch.chunk(values, 2, dim=-1)
             if self.training:
-                mu = mu[:, -1, :]
+                raw_mu = raw_mu[:, -1, :]
                 logvar = logvar[:, -1, :]
             else:
-                mu = self._select_by_attention(mu, attention_mask)
+                raw_mu = self._select_by_attention(raw_mu, attention_mask)
                 logvar = self._select_by_attention(logvar, attention_mask)
 
             logvar = torch.clamp(logvar, min=-10.0, max=10.0)
             std = torch.exp(0.5 * logvar)
             eps = torch.randn_like(std)
-            sample = mu + eps * std
+            sample = raw_mu + eps * std
             sample = nn.functional.normalize(sample, p=2, dim=-1)
-            mu = nn.functional.normalize(mu, p=2, dim=-1)
-            return BayesianEmbedding(sample=sample, mean=mu, logvar=logvar)
+            norm_mu = nn.functional.normalize(raw_mu, p=2, dim=-1)
+            return BayesianEmbedding(
+                sample=sample, mean=norm_mu, logvar=logvar, raw_mean=raw_mu
+            )
 
     return CustomRewardModel

@@ -536,9 +536,10 @@ class BayesianGPMLoss(nn.Module):
 
     def _kl_divergence(self, embedding: BayesianEmbedding) -> torch.Tensor:
         variance = torch.exp(embedding.logvar)
-        prior_var = self.prior_variance.to(embedding.mean.device, embedding.mean.dtype)
+        raw_mean = embedding.raw_mean
+        prior_var = self.prior_variance.to(raw_mean.device, raw_mean.dtype)
         kl = 0.5 * (
-            (variance + embedding.mean.pow(2)) / prior_var
+            (variance + raw_mean.pow(2)) / prior_var
             - 1
             + torch.log(prior_var)
             - embedding.logvar
