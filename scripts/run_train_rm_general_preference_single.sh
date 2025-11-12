@@ -25,4 +25,5 @@ deepspeed train_rm_general_preference.py \
 --ptx_loss_coef 0.1 \
 --train_split_ratio 0.98 \
 --is_general_preference \
---is_bayesian_gpm
+--is_bayesian_gpm \
+--save_on_epoch_end

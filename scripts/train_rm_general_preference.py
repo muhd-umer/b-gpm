@@ -199,6 +199,12 @@ if __name__ == "__main__":
     parser.add_argument("--accumulated_gradient", type=int, default=1)
     parser.add_argument("--max_samples", type=int, default=1000000)
     parser.add_argument("--load_checkpoint", action="store_true", default=False)
+    parser.add_argument(
+        "--save_on_epoch_end",
+        action="store_true",
+        default=False,
+        help="Save a checkpoint at the end of every training epoch.",
+    )
     parser.add_argument("--max_norm", type=float, default=1.0)
     parser.add_argument("--max_len", type=int, default=512)
     parser.add_argument("--l2", type=float, default=0.0)

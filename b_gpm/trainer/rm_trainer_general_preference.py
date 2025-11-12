@@ -369,6 +369,9 @@ class GeneralPreferenceRewardTrainer(ABC):
                 global_step += 1
 
             epoch_bar.update()
+            if getattr(self.args, "save_on_epoch_end", False):
+                epoch_tag = os.path.join(self.args.save_path, f"epoch_{epoch + 1}")
+                self.strategy.save_model(self.model, self.tokenizer, epoch_tag)
 
         if self._wandb is not None and self.strategy.is_rank_0():
             self._wandb.finish()
