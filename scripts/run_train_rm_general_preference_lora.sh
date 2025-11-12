@@ -5,12 +5,13 @@ deepspeed train_rm_general_preference.py \
 --save_steps -1 \
 --logging_steps 10 \
 --eval_steps -1 \
---accumulated_gradient 128 \
---micro_train_batch_size 1 \
+--accumulated_gradient 8 \
+--micro_train_batch_size 4 \
 --pretrain google/gemma-2b-it \
 --bf16 \
 --max_epochs 2 \
 --max_len 2048 \
+--zero_stage 2 \
 --learning_rate 2e-6 \
 --general_preference_tau 0.1 \
 --load_in_4bit \
@@ -18,13 +19,13 @@ deepspeed train_rm_general_preference.py \
 --lora_alpha 32 \
 --lora_dropout 0.05 \
 --dataset natolambert/skywork-preferences-80k-v0.1-cleaned \
---dataset_probs 1.0 \
---adam_offload \
+--dataset_probs 1 \
 --flash_attn \
 --gradient_checkpointing \
 --group_size 1 \
 --value_head_dim 6 \
 --ptx_loss_coef 0.1 \
+--save_best_model 2 \
 --train_split_ratio 0.98 \
 --is_general_preference \
 --is_bayesian_gpm
