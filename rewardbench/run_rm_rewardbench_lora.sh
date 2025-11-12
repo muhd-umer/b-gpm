@@ -11,5 +11,6 @@ python run_rm_rewardbench.py \
 --value_head_dim 6 \
 --max_length 2048 \
 --is_general_preference \
+--is_bayesian_gpm \
 --add_prompt_head 
 
