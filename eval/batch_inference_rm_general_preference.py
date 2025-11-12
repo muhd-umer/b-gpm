@@ -225,14 +225,14 @@ def batch_rm_inference(args):
 
             chosen_rewards, _ = model.custom_forward(chosen_ids, chosen_masks)
             if isinstance(chosen_rewards, BayesianEmbedding):
-                chosen_rewards = chosen_rewards.sample
+                chosen_rewards = chosen_rewards.mean
 
             reject_ids = reject_ids.squeeze(1).to(torch.cuda.current_device())
             reject_masks = reject_masks.squeeze(1).to(torch.cuda.current_device())
 
             reject_rewards, _ = model.custom_forward(reject_ids, reject_masks)
             if isinstance(reject_rewards, BayesianEmbedding):
-                reject_rewards = reject_rewards.sample
+                reject_rewards = reject_rewards.mean
 
             preference_loss, prob, result = loss_fn(chosen_rewards, reject_rewards)
             print("chosen_rewards", chosen_rewards)

@@ -313,6 +313,8 @@ def _get_reward_model(
             std = torch.exp(0.5 * logvar)
             eps = torch.randn_like(std)
             sample = mu + eps * std
+            sample = nn.functional.normalize(sample, p=2, dim=-1)
+            mu = nn.functional.normalize(mu, p=2, dim=-1)
             return BayesianEmbedding(sample=sample, mean=mu, logvar=logvar)
 
     return CustomRewardModel

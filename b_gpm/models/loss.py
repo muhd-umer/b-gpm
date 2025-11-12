@@ -579,6 +579,50 @@ class BayesianGPMLoss(nn.Module):
             )
         return result.view(chosen_sample.shape[0])
 
+    def compute_preference_uncertainty(
+        self,
+        chosen_embed: BayesianEmbedding,
+        reject_embed: BayesianEmbedding,
+        prompt_hidden_states: torch.Tensor = None,
+    ) -> torch.Tensor:
+        """
+        Compute closed-form variance of preference scores for Bayesian GPM.
+
+        Uses the formula derived for diagonal Gaussian embeddings:
+        Var[s] = <mu_i^2, S*sigma_j^2> + <mu_j^2, S*sigma_i^2> + <sigma_i^2, S*sigma_j^2>
+
+        where S is the swap permutation that swaps adjacent pairs of dimensions.
+
+        Args:
+            chosen_embed: BayesianEmbedding for chosen response
+            reject_embed: BayesianEmbedding for rejected response
+            prompt_hidden_states: Optional prompt hidden states for prompt-dependent matrices
+
+        Returns:
+            Tensor of shape (batch_size,) containing variance for each preference score
+        """
+        mu_i = chosen_embed.mean
+        mu_j = reject_embed.mean
+        var_i = torch.exp(chosen_embed.logvar)
+        var_j = torch.exp(reject_embed.logvar)
+
+        def swap_pairs(tensor):
+            batch_size = tensor.shape[0]
+            num_blocks = self.value_head_dim // 2
+            reshaped = tensor.view(batch_size, num_blocks, 2)
+            swapped = torch.flip(reshaped, dims=[2])
+            return swapped.view(batch_size, self.value_head_dim)
+
+        swapped_var_j = swap_pairs(var_j)
+        swapped_var_i = swap_pairs(var_i)
+
+        term1 = (mu_i.pow(2) * swapped_var_j).sum(dim=-1)
+        term2 = (mu_j.pow(2) * swapped_var_i).sum(dim=-1)
+        term3 = (var_i * swapped_var_j).sum(dim=-1)
+
+        variance = term1 + term2 + term3
+        return variance
+
 
 class HighDimGeneralPreferenceRegressionLoss(nn.Module):
     """
