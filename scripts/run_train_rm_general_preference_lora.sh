@@ -4,7 +4,7 @@ deepspeed train_rm_general_preference.py \
 --save_path ../results/saved_model/2b_gemma_lora/rm \
 --save_steps -1 \
 --logging_steps 10 \
---eval_steps 30000 \
+--eval_steps -1 \
 --accumulated_gradient 128 \
 --micro_train_batch_size 1 \
 --pretrain google/gemma-2b-it \
@@ -17,7 +17,7 @@ deepspeed train_rm_general_preference.py \
 --lora_rank 16 \
 --lora_alpha 32 \
 --lora_dropout 0.05 \
---dataset ../data/test_data/test_data.jsonl \
+--dataset natolambert/skywork-preferences-80k-v0.1-cleaned \
 --dataset_probs 1.0 \
 --adam_offload \
 --flash_attn \
