@@ -33,6 +33,9 @@ def get_reward_model(
     is_general_preference: bool = False,
     is_bayesian_gpm: bool = False,
     value_head_dim: int = 2,
+    bayesian_init_logvar: float = math.log(0.05),
+    bayesian_min_logvar: float = -8.0,
+    bayesian_max_logvar: float = 2.0,
     **kwargs,
 ) -> nn.Module:
     """Get reward model with a value head(linear layer) and a lm head.
@@ -75,6 +78,9 @@ def get_reward_model(
         is_bayesian_gpm,
         add_prompt_head,
         value_head_dim,
+        bayesian_init_logvar,
+        bayesian_min_logvar,
+        bayesian_max_logvar,
     )
     # Note: dschf is defined in function scope to avoid global effects
     # https://huggingface.co/docs/transformers/main_classes/deepspeed#nontrainer-deepspeed-integration
@@ -164,6 +170,9 @@ def _get_reward_model(
     is_bayesian_gpm: bool = False,
     add_prompt_head: bool = False,
     value_head_dim: int = 2,
+    bayesian_init_logvar: float = math.log(0.05),
+    bayesian_min_logvar: float = -8.0,
+    bayesian_max_logvar: float = 2.0,
 ):
     class CustomRewardModel(base_causal_model):
         supports_gradient_checkpointing = True
@@ -187,6 +196,18 @@ def _get_reward_model(
 
             self.is_general_preference = use_general_head
             self.is_bayesian_gpm = is_bayesian_gpm
+            if self.is_bayesian_gpm:
+                if bayesian_min_logvar >= bayesian_max_logvar:
+                    raise ValueError(
+                        "bayesian_min_logvar must be smaller than bayesian_max_logvar."
+                    )
+                self._bayes_logvar_offset = bayesian_init_logvar
+                self._bayes_logvar_min = bayesian_min_logvar
+                self._bayes_logvar_max = bayesian_max_logvar
+            else:
+                self._bayes_logvar_offset = None
+                self._bayes_logvar_min = None
+                self._bayes_logvar_max = None
 
             self.post_init()
 
@@ -309,12 +330,22 @@ def _get_reward_model(
                 raw_mu = self._select_by_attention(raw_mu, attention_mask)
                 logvar = self._select_by_attention(logvar, attention_mask)
 
-            logvar = torch.clamp(logvar, min=-10.0, max=10.0)
+            # Normalize raw_mu FIRST to place it on the unit sphere
+            # This ensures noise is added to a well-defined location
+            norm_mu = nn.functional.normalize(raw_mu, p=2, dim=-1)
+
+            if self._bayes_logvar_offset is not None:
+                logvar = logvar + self._bayes_logvar_offset
+                logvar = torch.clamp(
+                    logvar, min=self._bayes_logvar_min, max=self._bayes_logvar_max
+                )
+
             std = torch.exp(0.5 * logvar)
             eps = torch.randn_like(std)
-            sample = raw_mu + eps * std
+            # Add noise to the normalized mean (on the sphere)
+            sample = norm_mu + eps * std
+            # Project back onto the sphere
             sample = nn.functional.normalize(sample, p=2, dim=-1)
-            norm_mu = nn.functional.normalize(raw_mu, p=2, dim=-1)
             return BayesianEmbedding(
                 sample=sample, mean=norm_mu, logvar=logvar, raw_mean=raw_mu
             )

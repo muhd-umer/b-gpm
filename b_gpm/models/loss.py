@@ -466,7 +466,7 @@ class BayesianGPMLoss(nn.Module):
         model,
         value_head_dim: int,
         tau: float = 0.1,
-        prior_variance: float = 1.0,
+        prior_variance: float = 0.02,
         use_prompt_head: bool = False,
         regularize_mean: bool = False,
     ) -> None:
@@ -534,13 +534,32 @@ class BayesianGPMLoss(nn.Module):
         return loss.mean(), prob.mean()
 
     def _kl_divergence(self, embedding: BayesianEmbedding) -> torch.Tensor:
+        """
+        Compute KL divergence KL(q(z) || p(z)) where:
+        - q(z) = N(μ, diag(σ²)) is the posterior (learned)
+        - p(z) = N(0, diag(σ_0²)) is the prior
+
+        Since embeddings are constrained to the unit sphere by normalization,
+        we only regularize the variance, not the mean.
+
+        KL = 0.5 * Σ_i [(σ_i² / σ_0i²) - 1 - log(σ_i² / σ_0i²)]
+        """
         variance = torch.exp(embedding.logvar)
         prior_var = self.prior_variance.to(variance.device, variance.dtype)
         prior_logvar = self.prior_logvar.to(variance.device, variance.dtype)
+
+        # KL divergence for the variance (correct formula)
         kl = 0.5 * ((variance / prior_var) - 1 + prior_logvar - embedding.logvar)
+
+        # Note: We do NOT regularize the mean because embeddings are normalized
+        # to the unit sphere. Regularizing raw_mean is incorrect since it's not
+        # constrained and doesn't match the actual distribution used.
         if self.regularize_mean:
+            # This option is kept for ablation studies but should NOT be used
+            # in practice for sphere-constrained embeddings
             raw_mean = embedding.raw_mean
             kl = kl + 0.5 * (raw_mean.pow(2) / prior_var)
+
         return kl.sum(dim=-1)
 
     def _compute_scores(

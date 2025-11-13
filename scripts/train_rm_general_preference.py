@@ -32,6 +32,9 @@ def train(args):
         is_general_preference=args.is_general_preference,
         is_bayesian_gpm=args.is_bayesian_gpm,
         value_head_dim=args.value_head_dim,
+        bayesian_init_logvar=args.bayesian_init_logvar,
+        bayesian_min_logvar=args.bayesian_min_logvar,
+        bayesian_max_logvar=args.bayesian_max_logvar,
         init_prompt_head=True,
         add_prompt_head=args.add_prompt_head,
     )
@@ -341,14 +344,32 @@ if __name__ == "__main__":
     parser.add_argument(
         "--bayesian_prior_variance",
         type=float,
-        default=1.0,
-        help="Diagonal prior variance for Bayesian preference embeddings.",
+        default=0.02,
+        help="Diagonal prior variance for Bayesian preference embeddings. Should be small for unit-sphere embeddings (0.01-0.05 range).",
     )
     parser.add_argument(
         "--bayesian_regularize_mean",
         action="store_true",
         default=False,
-        help="If set, also penalize the posterior mean magnitude inside the Bayesian KL.",
+        help="If set, also penalize the posterior mean magnitude inside the Bayesian KL. NOT recommended for sphere-constrained embeddings.",
+    )
+    parser.add_argument(
+        "--bayesian_init_logvar",
+        type=float,
+        default=-4.0,
+        help="Initial log-variance added to the logvar head output. -4.0 ≈ log(0.018) keeps early noise small and training stable.",
+    )
+    parser.add_argument(
+        "--bayesian_min_logvar",
+        type=float,
+        default=-8.0,
+        help="Lower clamp for Bayesian log-variance (prevents numerical issues).",
+    )
+    parser.add_argument(
+        "--bayesian_max_logvar",
+        type=float,
+        default=2.0,
+        help="Upper clamp for Bayesian log-variance (keeps scores bounded).",
     )
 
     # wandb pamameters

@@ -591,6 +591,7 @@ class GeneralPreferenceRewardTrainer(ABC):
         )
 
         extras = {}
+        use_samples = underlying_model.training
         if isinstance(all_values, BayesianEmbedding):
             batch_size = chosen_ids.shape[0]
             chosen_embedding = BayesianEmbedding(
@@ -605,9 +606,22 @@ class GeneralPreferenceRewardTrainer(ABC):
                 logvar=all_values.logvar[batch_size:],
                 raw_mean=all_values.raw_mean[batch_size:],
             )
+            if not use_samples:
+                chosen_embedding = BayesianEmbedding(
+                    sample=chosen_embedding.mean,
+                    mean=chosen_embedding.mean,
+                    logvar=chosen_embedding.logvar,
+                    raw_mean=chosen_embedding.raw_mean,
+                )
+                reject_embedding = BayesianEmbedding(
+                    sample=reject_embedding.mean,
+                    mean=reject_embedding.mean,
+                    logvar=reject_embedding.logvar,
+                    raw_mean=reject_embedding.raw_mean,
+                )
+            extras["bayesian_embeddings"] = (chosen_embedding, reject_embedding)
             chosen_rewards = chosen_embedding.sample
             rejected_rewards = reject_embedding.sample
-            extras["bayesian_embeddings"] = (chosen_embedding, reject_embedding)
         else:
             chosen_rewards = all_values[: chosen_ids.shape[0]]
             rejected_rewards = all_values[chosen_ids.shape[0] :]
