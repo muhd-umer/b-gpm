@@ -91,6 +91,9 @@ class GeneralPreferenceRewardTrainer(ABC):
         self.bayesian_prior_variance = getattr(
             self.args, "bayesian_prior_variance", 1.0
         )
+        self.bayesian_regularize_mean = getattr(
+            self.args, "bayesian_regularize_mean", False
+        )
 
         if self.is_bayesian_gpm:
             assert (
@@ -102,6 +105,7 @@ class GeneralPreferenceRewardTrainer(ABC):
                 tau=tau,
                 prior_variance=self.bayesian_prior_variance,
                 use_prompt_head=self.args.add_prompt_head,
+                regularize_mean=self.bayesian_regularize_mean,
             )
             self.strategy.print("Bayesian GPM Loss")
         elif self.is_general_preference:
@@ -360,15 +364,9 @@ class GeneralPreferenceRewardTrainer(ABC):
                     "loss_mean": loss_mean,
                 }
 
-                # Add Bayesian-specific metrics to logging
-                if self.is_bayesian_gpm and hasattr(self.loss_fn, "last_kl_loss"):
-                    logs_dict.update(
-                        {
-                            "kl_loss": self.loss_fn.last_kl_loss,
-                            "data_loss": self.loss_fn.last_data_loss,
-                            "kl_beta": self.loss_fn.last_kl_beta,
-                        }
-                    )
+                if isinstance(self.loss_fn, BayesianGPMLoss):
+                    logs_dict["bayes_kl"] = self.loss_fn.last_kl_value
+                    logs_dict["kl_beta"] = self._current_kl_beta(global_step)
 
                 # logs/checkpoints/evaluate
                 eval_loss_minimum = self.save_logs_and_checkpoints(

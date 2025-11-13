@@ -461,12 +461,6 @@ class HighDimGeneralPreferenceLoss(nn.Module):
 
 
 class BayesianGPMLoss(nn.Module):
-    """
-    Bayesian extension of the high-dimensional General Preference loss.
-    Combines the standard data-fidelity term with a KL divergence towards
-    a structured Gaussian prior over embeddings.
-    """
-
     def __init__(
         self,
         model,
@@ -474,15 +468,18 @@ class BayesianGPMLoss(nn.Module):
         tau: float = 0.1,
         prior_variance: float = 1.0,
         use_prompt_head: bool = False,
+        regularize_mean: bool = False,
     ) -> None:
         super().__init__()
         self.model = model
         self.value_head_dim = value_head_dim
         self.tau = tau
         self.use_prompt_head = use_prompt_head
+        self.regularize_mean = regularize_mean
 
         prior = torch.full((value_head_dim,), prior_variance)
         self.register_buffer("prior_variance", prior, persistent=False)
+        self.register_buffer("prior_logvar", torch.log(prior), persistent=False)
         self.register_buffer(
             "base_r_matrix",
             (
@@ -492,6 +489,7 @@ class BayesianGPMLoss(nn.Module):
             ),
             persistent=False,
         )
+        self._last_kl = 0.0
 
     @staticmethod
     def create_skew_symmetric_block_matrix(dim: int) -> torch.Tensor:
@@ -530,41 +528,19 @@ class BayesianGPMLoss(nn.Module):
         prob = torch.sigmoid(logits)
 
         kl = self._kl_divergence(chosen_embed) + self._kl_divergence(reject_embed)
+        self._last_kl = kl.detach().mean().item()
         loss = data_loss + kl_beta * kl
-
-        # Store components for logging
-        self.last_data_loss = data_loss.mean().item()
-        self.last_kl_loss = kl.mean().item()
-        self.last_kl_beta = kl_beta
 
         return loss.mean(), prob.mean()
 
     def _kl_divergence(self, embedding: BayesianEmbedding) -> torch.Tensor:
-        """
-        Compute KL divergence between the learned posterior and the prior.
-
-        Since embeddings are normalized to the unit sphere for preference computation,
-        we compute KL using the normalized mean instead of raw_mean. This ensures
-        consistency between the space where we compute preferences and the space
-        where we regularize.
-
-        KL(q||p) = 0.5 * sum((sigma^2 + mu^2) / sigma_prior^2 - 1 + log(sigma_prior^2) - log(sigma^2))
-
-        For normalized embeddings with ||mu|| = 1, the mu^2 term represents the
-        squared norm of the normalized mean, which is 1. However, we use the actual
-        normalized mean to allow for more flexible regularization.
-        """
         variance = torch.exp(embedding.logvar)
-        # Use normalized mean for KL computation to match the preference computation space
-        norm_mean = embedding.mean  # Already normalized in the model
-        prior_var = self.prior_variance.to(norm_mean.device, norm_mean.dtype)
-
-        kl = 0.5 * (
-            (variance + norm_mean.pow(2)) / prior_var
-            - 1
-            + torch.log(prior_var)
-            - embedding.logvar
-        )
+        prior_var = self.prior_variance.to(variance.device, variance.dtype)
+        prior_logvar = self.prior_logvar.to(variance.device, variance.dtype)
+        kl = 0.5 * ((variance / prior_var) - 1 + prior_logvar - embedding.logvar)
+        if self.regularize_mean:
+            raw_mean = embedding.raw_mean
+            kl = kl + 0.5 * (raw_mean.pow(2) / prior_var)
         return kl.sum(dim=-1)
 
     def _compute_scores(
@@ -601,28 +577,16 @@ class BayesianGPMLoss(nn.Module):
             )
         return result.view(chosen_sample.shape[0])
 
+    @property
+    def last_kl_value(self) -> float:
+        return self._last_kl
+
     def compute_preference_uncertainty(
         self,
         chosen_embed: BayesianEmbedding,
         reject_embed: BayesianEmbedding,
         prompt_hidden_states: torch.Tensor = None,
     ) -> torch.Tensor:
-        """
-        Compute closed-form variance of preference scores for Bayesian GPM.
-
-        Uses the formula derived for diagonal Gaussian embeddings:
-        Var[s] = <mu_i^2, S*sigma_j^2> + <mu_j^2, S*sigma_i^2> + <sigma_i^2, S*sigma_j^2>
-
-        where S is the swap permutation that swaps adjacent pairs of dimensions.
-
-        Args:
-            chosen_embed: BayesianEmbedding for chosen response
-            reject_embed: BayesianEmbedding for rejected response
-            prompt_hidden_states: Optional prompt hidden states for prompt-dependent matrices
-
-        Returns:
-            Tensor of shape (batch_size,) containing variance for each preference score
-        """
         mu_i = chosen_embed.mean
         mu_j = reject_embed.mean
         var_i = torch.exp(chosen_embed.logvar)

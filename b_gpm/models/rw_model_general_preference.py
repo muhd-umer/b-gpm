@@ -134,21 +134,15 @@ def get_reward_model(
                     model.value_head.weight.data.normal_(
                         mean=0.0, std=1 / (config.hidden_size + 1)
                     )
-                    # For Bayesian GPM, initialize logvar weights to output small variance
                     if is_bayesian_gpm:
                         half_dim = model.value_head.weight.data.shape[0] // 2
-                        # Initialize logvar part to output log(0.1) ≈ -2.3
-                        # This gives initial variance of 0.1
                         model.value_head.weight.data[half_dim:, :] *= 0.1
         else:
             model.value_head.weight.data.normal_(
                 mean=0.0, std=1 / (config.hidden_size + 1)
             )
-            # For Bayesian GPM, initialize logvar weights to output small variance
             if is_bayesian_gpm:
                 half_dim = model.value_head.weight.data.shape[0] // 2
-                # Initialize logvar part to output log(0.1) ≈ -2.3
-                # This gives initial variance of 0.1
                 model.value_head.weight.data[half_dim:, :] *= 0.1
 
     if init_prompt_head and add_prompt_head:

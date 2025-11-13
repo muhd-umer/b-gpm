@@ -344,6 +344,12 @@ if __name__ == "__main__":
         default=1.0,
         help="Diagonal prior variance for Bayesian preference embeddings.",
     )
+    parser.add_argument(
+        "--bayesian_regularize_mean",
+        action="store_true",
+        default=False,
+        help="If set, also penalize the posterior mean magnitude inside the Bayesian KL.",
+    )
 
     # wandb pamameters
     parser.add_argument("--use_wandb", type=str, default=None)
