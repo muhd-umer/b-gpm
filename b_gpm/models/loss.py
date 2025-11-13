@@ -532,14 +532,35 @@ class BayesianGPMLoss(nn.Module):
         kl = self._kl_divergence(chosen_embed) + self._kl_divergence(reject_embed)
         loss = data_loss + kl_beta * kl
 
+        # Store components for logging
+        self.last_data_loss = data_loss.mean().item()
+        self.last_kl_loss = kl.mean().item()
+        self.last_kl_beta = kl_beta
+
         return loss.mean(), prob.mean()
 
     def _kl_divergence(self, embedding: BayesianEmbedding) -> torch.Tensor:
+        """
+        Compute KL divergence between the learned posterior and the prior.
+
+        Since embeddings are normalized to the unit sphere for preference computation,
+        we compute KL using the normalized mean instead of raw_mean. This ensures
+        consistency between the space where we compute preferences and the space
+        where we regularize.
+
+        KL(q||p) = 0.5 * sum((sigma^2 + mu^2) / sigma_prior^2 - 1 + log(sigma_prior^2) - log(sigma^2))
+
+        For normalized embeddings with ||mu|| = 1, the mu^2 term represents the
+        squared norm of the normalized mean, which is 1. However, we use the actual
+        normalized mean to allow for more flexible regularization.
+        """
         variance = torch.exp(embedding.logvar)
-        raw_mean = embedding.raw_mean
-        prior_var = self.prior_variance.to(raw_mean.device, raw_mean.dtype)
+        # Use normalized mean for KL computation to match the preference computation space
+        norm_mean = embedding.mean  # Already normalized in the model
+        prior_var = self.prior_variance.to(norm_mean.device, norm_mean.dtype)
+
         kl = 0.5 * (
-            (variance + raw_mean.pow(2)) / prior_var
+            (variance + norm_mean.pow(2)) / prior_var
             - 1
             + torch.log(prior_var)
             - embedding.logvar

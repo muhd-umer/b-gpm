@@ -360,6 +360,16 @@ class GeneralPreferenceRewardTrainer(ABC):
                     "loss_mean": loss_mean,
                 }
 
+                # Add Bayesian-specific metrics to logging
+                if self.is_bayesian_gpm and hasattr(self.loss_fn, "last_kl_loss"):
+                    logs_dict.update(
+                        {
+                            "kl_loss": self.loss_fn.last_kl_loss,
+                            "data_loss": self.loss_fn.last_data_loss,
+                            "kl_beta": self.loss_fn.last_kl_beta,
+                        }
+                    )
+
                 # logs/checkpoints/evaluate
                 eval_loss_minimum = self.save_logs_and_checkpoints(
                     args, global_step, step_bar, eval_loss_minimum, logs_dict
