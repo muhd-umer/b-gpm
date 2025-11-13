@@ -27,6 +27,6 @@ deepspeed train_rm_general_preference.py \
 --is_general_preference \
 --is_bayesian_gpm \
 --bayesian_kl_warmup_steps 500 \
---bayesian_max_kl_weight 0.05 \
---bayesian_prior_variance 0.1 \
+--bayesian_max_kl_weight 0.01 \
+--bayesian_prior_variance 1.0 \
 --save_on_epoch_end

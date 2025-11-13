@@ -3,7 +3,7 @@
 deepspeed train_rm_general_preference.py \
 --save_path ../results/saved_model/2b_gemma_lora/rm \
 --save_steps -1 \
---logging_steps 10 \
+--logging_steps 1 \
 --eval_steps -1 \
 --accumulated_gradient 8 \
 --micro_train_batch_size 4 \
@@ -28,4 +28,7 @@ deepspeed train_rm_general_preference.py \
 --save_best_model 2 \
 --train_split_ratio 0.98 \
 --is_general_preference \
---is_bayesian_gpm
+--is_bayesian_gpm \
+--bayesian_kl_warmup_steps 500 \
+--bayesian_max_kl_weight 0.01 \
+--bayesian_prior_variance 1.0 \
