@@ -134,16 +134,10 @@ def get_reward_model(
                     model.value_head.weight.data.normal_(
                         mean=0.0, std=1 / (config.hidden_size + 1)
                     )
-                    if is_bayesian_gpm:
-                        half_dim = model.value_head.weight.data.shape[0] // 2
-                        model.value_head.weight.data[half_dim:, :] *= 0.1
         else:
             model.value_head.weight.data.normal_(
                 mean=0.0, std=1 / (config.hidden_size + 1)
             )
-            if is_bayesian_gpm:
-                half_dim = model.value_head.weight.data.shape[0] // 2
-                model.value_head.weight.data[half_dim:, :] *= 0.1
 
     if init_prompt_head and add_prompt_head:
         if dschf is not None:
