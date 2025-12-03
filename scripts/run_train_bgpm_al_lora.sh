@@ -4,7 +4,7 @@
 deepspeed train_rm_bgpm_al.py \
     --save_path ../results/saved_model/bgpm_al_lora \
     --logging_steps 10 \
-    --accumulated_gradient 4 \
+    --accumulated_gradient 32 \
     --micro_train_batch_size 8 \
     --pretrain google/gemma-2b-it \
     --bf16 \

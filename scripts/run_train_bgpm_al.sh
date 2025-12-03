@@ -33,11 +33,11 @@ deepspeed train_rm_bgpm_al.py \
     --bayesian_sample_mix_ratio 0.7 \
     --acquisition mv \
     --al_retrain \
-    --al_batch_size 256 \
+    --al_batch_size 700 \
     --al_max_iterations 20 \
-    --al_max_labels 10000 \
+    --al_max_labels 16000 \
     --al_eval_every 2 \
     --al_save_every 5 \
-    --initial_labels 1000 \
+    --initial_labels 2000 \
     --use_diverse_selection \
     --use_wandb True
