@@ -95,25 +95,40 @@ class UnlabeledPool:
         """Get all labeled pairs."""
         return [self.pairs[i] for i in sorted(self._labeled_indices)]
 
-    def to_training_format(self) -> List[Dict[str, Any]]:
-        """Convert labeled pairs to training data format."""
+    def to_training_format(
+        self, use_message_format: bool = True
+    ) -> List[Dict[str, Any]]:
+        """Convert labeled pairs to training data format.
+
+        Args:
+            use_message_format: If True, output chosen/rejected as message lists
+                               for chat template compatibility. If False, output
+                               as plain strings with prompt field.
+        """
         data = []
         for pair in self.get_labeled_pairs():
-            if pair.label == 1:
+            chosen_text = pair.chosen if pair.label == 1 else pair.rejected
+            rejected_text = pair.rejected if pair.label == 1 else pair.chosen
+
+            if use_message_format:
                 data.append(
                     {
-                        "prompt": pair.prompt,
-                        "chosen": pair.chosen,
-                        "rejected": pair.rejected,
+                        "chosen": [
+                            {"role": "user", "content": pair.prompt},
+                            {"role": "assistant", "content": chosen_text},
+                        ],
+                        "rejected": [
+                            {"role": "user", "content": pair.prompt},
+                            {"role": "assistant", "content": rejected_text},
+                        ],
                     }
                 )
             else:
-                # swap chosen/rejected for label=0
                 data.append(
                     {
                         "prompt": pair.prompt,
-                        "chosen": pair.rejected,
-                        "rejected": pair.chosen,
+                        "chosen": chosen_text,
+                        "rejected": rejected_text,
                     }
                 )
         return data
