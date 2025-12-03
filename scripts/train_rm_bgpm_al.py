@@ -165,22 +165,8 @@ def create_train_fn(args, strategy, tokenizer):
             group_size=args.group_size,
         )
 
-        # Create optimizer for this iteration
-        optim = strategy.create_optimizer(
-            model, lr=args.learning_rate, betas=(0.9, 0.95), weight_decay=args.l2
-        )
-
-        num_update_steps = len(train_dataloader) // strategy.accumulated_gradient
-        max_steps = math.ceil(args.al_epochs_per_iter * num_update_steps)
-
-        scheduler = get_scheduler(
-            "cosine",
-            optim,
-            num_warmup_steps=math.ceil(max_steps * 0.03),
-            num_training_steps=max_steps,
-        )
-
-        (model, optim, scheduler) = strategy.prepare((model, optim, scheduler))
+        optim = model.optimizer if hasattr(model, "optimizer") else None
+        scheduler = model.lr_scheduler if hasattr(model, "lr_scheduler") else None
 
         trainer = GeneralPreferenceRewardTrainer(
             model=model,
