@@ -1,6 +1,4 @@
 #!/bin/bash
-# Active Learning training script for Bayesian GPM
-# Estimated time: ~8-10 hours with retraining, ~30 min simulation only
 
 # export CUDA_VISIBLE_DEVICES=0
 
