@@ -199,11 +199,12 @@ def create_train_fn(args, strategy, tokenizer):
 
         # Create minimal args for fit
         train_args = argparse.Namespace(
+            save_path=args.save_path,
             save_steps=-1,
             eval_steps=-1,
             logging_steps=args.logging_steps,
-            save_best_model=None,
-            save_on_epoch_end=False,
+            save_best_model=args.save_best_model,
+            save_on_epoch_end=args.save_on_epoch_end,
             add_pretrain_loss=args.add_pretrain_loss,
             ptx_loss_coef=args.ptx_loss_coef,
             reward_scaler_beta=args.reward_scaler_beta,
@@ -354,7 +355,15 @@ if __name__ == "__main__":
     # Model arguments
     parser.add_argument("--pretrain", type=str, default="google/gemma-2b")
     parser.add_argument("--save_path", type=str, default="../results/saved_model/al")
+    parser.add_argument("--save_steps", type=int, default=-1)
+    parser.add_argument("--eval_steps", type=int, default=-1)
     parser.add_argument("--logging_steps", type=int, default=1)
+    parser.add_argument(
+        "--ckpt_path", type=str, default="../results/saved_model/checkpoint"
+    )
+    parser.add_argument("--max_ckpt_num", type=int, default=3)
+    parser.add_argument("--max_ckpt_mem", type=int, default=1000)
+    parser.add_argument("--max_epochs", type=int, default=1)
     parser.add_argument("--micro_train_batch_size", type=int, default=8)
     parser.add_argument("--accumulated_gradient", type=int, default=1)
     parser.add_argument("--max_norm", type=float, default=1.0)
@@ -362,6 +371,19 @@ if __name__ == "__main__":
     parser.add_argument("--l2", type=float, default=0.0)
     parser.add_argument("--gradient_checkpointing", action="store_true", default=False)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--load_checkpoint", action="store_true", default=False)
+    parser.add_argument(
+        "--save_on_epoch_end",
+        action="store_true",
+        default=False,
+        help="Save a checkpoint at the end of every training epoch.",
+    )
+    parser.add_argument(
+        "--save_best_model",
+        type=int,
+        default=None,
+        help="Save the top N models with the lowest evaluation loss.",
+    )
 
     # DeepSpeed arguments
     parser.add_argument("--local_rank", type=int, default=-1)
@@ -372,6 +394,7 @@ if __name__ == "__main__":
     parser.add_argument("--adam_offload", action="store_true", default=False)
     parser.add_argument("--flash_attn", action="store_true", default=False)
     parser.add_argument("--compute_fp32_loss", action="store_true", default=False)
+    parser.add_argument("--margin_loss", action="store_true", default=False)
     parser.add_argument("--grad_accum_dtype", type=str, default=None)
     parser.add_argument("--disable_trace_cache", action="store_true", default=False)
     parser.add_argument("--load_in_4bit", action="store_true", default=False)
