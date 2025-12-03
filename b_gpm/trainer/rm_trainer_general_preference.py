@@ -94,6 +94,9 @@ class GeneralPreferenceRewardTrainer(ABC):
         self.bayesian_regularize_mean = getattr(
             self.args, "bayesian_regularize_mean", False
         )
+        self.bayesian_sample_mix_ratio = getattr(
+            self.args, "bayesian_sample_mix_ratio", 1.0
+        )
 
         if self.is_bayesian_gpm:
             assert (
@@ -106,6 +109,7 @@ class GeneralPreferenceRewardTrainer(ABC):
                 prior_variance=self.bayesian_prior_variance,
                 use_prompt_head=self.args.add_prompt_head,
                 regularize_mean=self.bayesian_regularize_mean,
+                sample_mix_ratio=self.bayesian_sample_mix_ratio,
             )
             self.strategy.print("Bayesian GPM Loss")
         elif self.is_general_preference:
@@ -491,6 +495,11 @@ class GeneralPreferenceRewardTrainer(ABC):
                     True
                     if isinstance(
                         self.loss_fn, HighDimGeneralPreferenceRegressionMoELoss
+                    )
+                    or isinstance(self.loss_fn, HighDimGeneralPreferenceMoELoss)
+                    or (
+                        isinstance(self.loss_fn, BayesianGPMLoss)
+                        and self.loss_fn.use_prompt_head
                     )
                     else False
                 )

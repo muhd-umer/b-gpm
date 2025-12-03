@@ -340,7 +340,7 @@ def _get_reward_model(
                     logvar, min=self._bayes_logvar_min, max=self._bayes_logvar_max
                 )
 
-            std = torch.exp(0.5 * logvar)
+            std = torch.exp(0.5 * logvar).clamp(min=1e-6)
             eps = torch.randn_like(std)
             # Add noise to the normalized mean (on the sphere)
             sample = norm_mu + eps * std

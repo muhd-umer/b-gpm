@@ -1,0 +1,43 @@
+#!/bin/bash
+# Active Learning training script for Bayesian GPM
+# Estimated time: ~8-10 hours with retraining, ~30 min simulation only
+
+# export CUDA_VISIBLE_DEVICES=0
+
+deepspeed train_rm_bgpm_al.py \
+    --save_path ../results/saved_model/bgpm_al \
+    --logging_steps 10 \
+    --accumulated_gradient 1 \
+    --micro_train_batch_size 16 \
+    --pretrain google/gemma-2b-it \
+    --bf16 \
+    --max_len 2048 \
+    --zero_stage 3 \
+    --learning_rate 2e-6 \
+    --general_preference_tau 0.1 \
+    --dataset natolambert/skywork-preferences-80k-v0.1-cleaned \
+    --dataset_probs 1 \
+    --max_samples 30000 \
+    --flash_attn \
+    --gradient_checkpointing \
+    --group_size 1 \
+    --value_head_dim 6 \
+    --is_general_preference \
+    --is_bayesian_gpm \
+    --bayesian_kl_warmup_steps 100 \
+    --bayesian_max_kl_weight 0.001 \
+    --bayesian_prior_variance 0.01 \
+    --bayesian_init_logvar -5.0 \
+    --bayesian_min_logvar -8.0 \
+    --bayesian_max_logvar 1.0 \
+    --bayesian_sample_mix_ratio 0.7 \
+    --acquisition mv \
+    --al_retrain \
+    --al_batch_size 256 \
+    --al_max_iterations 20 \
+    --al_max_labels 10000 \
+    --al_eval_every 2 \
+    --al_save_every 5 \
+    --initial_labels 1000 \
+    --use_diverse_selection \
+    --use_wandb True

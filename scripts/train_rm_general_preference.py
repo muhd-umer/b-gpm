@@ -371,6 +371,14 @@ if __name__ == "__main__":
         default=2.0,
         help="Upper clamp for Bayesian log-variance (keeps scores bounded).",
     )
+    parser.add_argument(
+        "--bayesian_sample_mix_ratio",
+        type=float,
+        default=0.7,
+        help="Ratio of stochastic samples vs deterministic means during training. "
+        "1.0 = pure samples (fully Bayesian), 0.0 = pure means (like GPM). "
+        "Values like 0.5-0.8 provide a good balance.",
+    )
 
     # wandb pamameters
     parser.add_argument("--use_wandb", type=str, default=None)

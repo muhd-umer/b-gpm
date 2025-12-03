@@ -469,6 +469,7 @@ class BayesianGPMLoss(nn.Module):
         prior_variance: float = 0.02,
         use_prompt_head: bool = False,
         regularize_mean: bool = False,
+        sample_mix_ratio: float = 1.0,
     ) -> None:
         super().__init__()
         self.model = model
@@ -476,6 +477,7 @@ class BayesianGPMLoss(nn.Module):
         self.tau = tau
         self.use_prompt_head = use_prompt_head
         self.regularize_mean = regularize_mean
+        self.sample_mix_ratio = sample_mix_ratio
 
         prior = torch.full((value_head_dim,), prior_variance)
         self.register_buffer("prior_variance", prior, persistent=False)
@@ -514,12 +516,30 @@ class BayesianGPMLoss(nn.Module):
         if bayesian_embeddings is None:
             raise ValueError("Bayesian embeddings are required for BayesianGPMLoss.")
         chosen_embed, reject_embed = bayesian_embeddings
-        chosen_sample = chosen_embed.sample
-        reject_sample = reject_embed.sample
 
-        result = self._compute_scores(
-            chosen_sample, reject_sample, prompt_hidden_states
-        )
+        # Interpolate between stochastic samples and deterministic means
+        # This helps stabilize training for tasks requiring precise boundaries (e.g., reasoning)
+        if self.sample_mix_ratio >= 1.0:
+            chosen_emb = chosen_embed.sample
+            reject_emb = reject_embed.sample
+        elif self.sample_mix_ratio <= 0.0:
+            chosen_emb = chosen_embed.mean
+            reject_emb = reject_embed.mean
+        else:
+            # Smooth interpolation: mix = ratio * sample + (1 - ratio) * mean
+            chosen_emb = (
+                self.sample_mix_ratio * chosen_embed.sample
+                + (1 - self.sample_mix_ratio) * chosen_embed.mean
+            )
+            reject_emb = (
+                self.sample_mix_ratio * reject_embed.sample
+                + (1 - self.sample_mix_ratio) * reject_embed.mean
+            )
+            # Re-normalize to stay on unit sphere
+            chosen_emb = F.normalize(chosen_emb, p=2, dim=-1)
+            reject_emb = F.normalize(reject_emb, p=2, dim=-1)
+
+        result = self._compute_scores(chosen_emb, reject_emb, prompt_hidden_states)
         if margin is not None:
             logits = (result - margin) / self.tau
         else:
@@ -536,20 +556,20 @@ class BayesianGPMLoss(nn.Module):
     def _kl_divergence(self, embedding: BayesianEmbedding) -> torch.Tensor:
         """
         Compute KL divergence KL(q(z) || p(z)) where:
-        - q(z) = N(μ, diag(σ²)) is the posterior (learned)
-        - p(z) = N(0, diag(σ_0²)) is the prior
+        - q(z) = N(mu, diag(sigma^2)) is the posterior (learned)
+        - p(z) = N(0, diag(sigma_0^2)) is the prior
 
         Since embeddings are constrained to the unit sphere by normalization,
         we only regularize the variance, not the mean.
 
-        KL = 0.5 * Σ_i [(σ_i² / σ_0i²) - 1 - log(σ_i² / σ_0i²)]
+        KL = 0.5 * sigma_i [(sigma_i^2 / sigma_0i^2) - 1 - log(sigma_i^2 / sigma_0i^2)]
+           = 0.5 * sigma_i [(sigma_i^2 / sigma_0i^2) - 1 - (logvar_i - prior_logvar_i)]
         """
         variance = torch.exp(embedding.logvar)
         prior_var = self.prior_variance.to(variance.device, variance.dtype)
         prior_logvar = self.prior_logvar.to(variance.device, variance.dtype)
 
-        # KL divergence for the variance (correct formula)
-        kl = 0.5 * ((variance / prior_var) - 1 + prior_logvar - embedding.logvar)
+        kl = 0.5 * ((variance / prior_var) - 1 - (embedding.logvar - prior_logvar))
 
         # Note: We do NOT regularize the mean because embeddings are normalized
         # to the unit sphere. Regularizing raw_mean is incorrect since it's not
@@ -606,20 +626,19 @@ class BayesianGPMLoss(nn.Module):
         reject_embed: BayesianEmbedding,
         prompt_hidden_states: torch.Tensor = None,
     ) -> torch.Tensor:
+        """Compute the closed-form variance of the preference score s(y_i ≻ y_j | x)."""
         mu_i = chosen_embed.mean
         mu_j = reject_embed.mean
         var_i = torch.exp(chosen_embed.logvar)
         var_j = torch.exp(reject_embed.logvar)
 
-        def swap_pairs(tensor):
-            batch_size = tensor.shape[0]
-            num_blocks = self.value_head_dim // 2
-            reshaped = tensor.view(batch_size, num_blocks, 2)
-            swapped = torch.flip(reshaped, dims=[2])
-            return swapped.view(batch_size, self.value_head_dim)
+        dim = self.value_head_dim
+        swap_idx = torch.arange(dim, device=var_i.device)
+        swap_idx[0::2] = torch.arange(1, dim, 2, device=var_i.device)
+        swap_idx[1::2] = torch.arange(0, dim, 2, device=var_i.device)
 
-        swapped_var_j = swap_pairs(var_j)
-        swapped_var_i = swap_pairs(var_i)
+        swapped_var_j = var_j[:, swap_idx]
+        swapped_var_i = var_i[:, swap_idx]
 
         term1 = (mu_i.pow(2) * swapped_var_j).sum(dim=-1)
         term2 = (mu_j.pow(2) * swapped_var_i).sum(dim=-1)
