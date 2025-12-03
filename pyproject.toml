@@ -27,7 +27,7 @@ dependencies = [
     "ninja>=1.13.0",
     "packaging>=25.0",
     "parameterized>=0.9.0",
-    "peft>=0.17.1",
+    "peft==0.17.1",
     "protobuf>=6.33.0",
     "pytest>=9.0.0",
     "rewardbench>=0.1.4",
