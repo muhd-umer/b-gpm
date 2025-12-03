@@ -3,13 +3,13 @@
 deepspeed train_rm_general_preference.py \
 --save_path ../results/saved_model/2b_gemma/rm \
 --save_steps -1 \
---logging_steps 10 \
+--logging_steps 1 \
 --eval_steps -1 \
---accumulated_gradient 8 \
---micro_train_batch_size 4 \
+--accumulated_gradient 1 \
+--micro_train_batch_size 16 \
 --pretrain google/gemma-2b-it \
 --bf16 \
---max_epochs 2 \
+--max_epochs 3 \
 --max_len 2048 \
 --zero_stage 3 \
 --learning_rate 2e-6 \
@@ -25,10 +25,11 @@ deepspeed train_rm_general_preference.py \
 --train_split_ratio 0.98 \
 --is_general_preference \
 --is_bayesian_gpm \
---bayesian_kl_warmup_steps 500 \
+--bayesian_kl_warmup_steps 50 \
 --bayesian_max_kl_weight 0.005 \
 --bayesian_prior_variance 0.04 \
 --bayesian_init_logvar -4.0 \
 --bayesian_min_logvar -8.0 \
 --bayesian_max_logvar 2.0 \
---save_on_epoch_end
+--save_on_epoch_end \
+--use_wandb True
