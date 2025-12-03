@@ -206,6 +206,9 @@ def create_train_fn(args, strategy, tokenizer):
             save_on_epoch_end=False,
             add_pretrain_loss=args.add_pretrain_loss,
             ptx_loss_coef=args.ptx_loss_coef,
+            reward_scaler_beta=args.reward_scaler_beta,
+            reward_margin=args.reward_margin,
+            regression_target_margin=args.regression_target_margin,
             bayesian_kl_warmup_steps=args.bayesian_kl_warmup_steps,
             bayesian_max_kl_weight=args.bayesian_max_kl_weight,
             bayesian_prior_variance=args.bayesian_prior_variance,
@@ -397,6 +400,9 @@ if __name__ == "__main__":
     parser.add_argument("--add_prompt_head", action="store_true", default=False)
     parser.add_argument("--add_pretrain_loss", action="store_true", default=False)
     parser.add_argument("--ptx_loss_coef", type=float, default=0.1)
+    parser.add_argument("--reward_scaler_beta", type=float, default=2.0)
+    parser.add_argument("--reward_margin", type=float, default=1.0)
+    parser.add_argument("--regression_target_margin", type=float, default=10.0)
 
     # Bayesian GPM specific arguments
     parser.add_argument("--bayesian_kl_warmup_steps", type=int, default=500)
