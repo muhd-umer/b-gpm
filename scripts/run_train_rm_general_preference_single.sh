@@ -28,9 +28,9 @@ deepspeed train_rm_general_preference.py \
 --bayesian_kl_warmup_steps 150 \
 --bayesian_max_kl_weight 0.001 \
 --bayesian_prior_variance 0.01 \
---bayesian_init_logvar -5.0 \
+--bayesian_init_logvar -4.0 \
 --bayesian_min_logvar -8.0 \
---bayesian_max_logvar 1.0 \
+--bayesian_max_logvar 2.0 \
 --bayesian_sample_mix_ratio 0.7 \
 --save_on_epoch_end \
 --use_wandb True

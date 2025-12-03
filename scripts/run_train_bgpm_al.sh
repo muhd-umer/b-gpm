@@ -24,12 +24,9 @@ deepspeed train_rm_bgpm_al.py \
     --value_head_dim 6 \
     --is_general_preference \
     --is_bayesian_gpm \
-    --bayesian_kl_warmup_steps 100 \
-    --bayesian_max_kl_weight 0.001 \
-    --bayesian_prior_variance 0.01 \
-    --bayesian_init_logvar -5.0 \
-    --bayesian_min_logvar -8.0 \
-    --bayesian_max_logvar 1.0 \
+    --bayesian_kl_warmup_steps 20 \
+    --bayesian_max_kl_weight 0.005 \
+    --bayesian_prior_variance 0.02 \
     --bayesian_sample_mix_ratio 0.7 \
     --acquisition mv \
     --al_retrain \

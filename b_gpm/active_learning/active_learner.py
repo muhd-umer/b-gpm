@@ -3,9 +3,11 @@ from typing import Callable, List, Optional, Dict, Any, Tuple
 import logging
 import os
 import json
+import math
 from datetime import datetime
 
 import torch
+import torch.distributed as dist
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -13,7 +15,6 @@ from b_gpm.models.bayesian_types import BayesianEmbedding
 from .acquisition import AcquisitionFunction, AcquisitionResult, MaxVariance
 from .batch_selection import BatchSelector, TopKSelector, ClusterDiverseSelector
 from .pool import UnlabeledPool, PoolDataset, PreferencePair
-
 
 logger = logging.getLogger(__name__)
 
@@ -27,16 +28,13 @@ class ActiveLearningConfig:
     acquisition_batch_size: int = 64  # batch size for computing embeddings
     use_diverse_selection: bool = True
 
-    # stopping criteria
     max_iterations: int = 100
     max_labels: int = 10000
     target_accuracy: Optional[float] = None
 
-    # evaluation
     eval_every: int = 5
     save_every: int = 10
 
-    # paths
     output_dir: str = "./active_learning_results"
     checkpoint_dir: Optional[str] = None
 
@@ -118,7 +116,6 @@ class ActiveLearner:
 
             logger.info(f"Iteration {self.state.iteration}")
 
-            # step 1: compute acquisition scores for unlabeled samples
             unlabeled_indices = self.pool.get_unlabeled_indices()
             if len(unlabeled_indices) == 0:
                 logger.info("No more unlabeled samples")
@@ -129,28 +126,23 @@ class ActiveLearner:
             )
             scores, features = self._compute_acquisition_scores(unlabeled_indices)
 
-            # step 2: select batch
             n_select = min(self.config.batch_size, len(unlabeled_indices))
             selected_local = self.batch_selector.select(scores, features, n_select)
             selected_pool_indices = [unlabeled_indices[i] for i in selected_local]
 
             logger.info(f"Selected {len(selected_pool_indices)} samples for labeling")
 
-            # step 3: query oracle
             selected_pairs = self.pool.get_pairs(selected_pool_indices)
             labels = self.oracle(selected_pairs)
 
-            # step 4: update pool with labels
             self.pool.label_pairs(selected_pool_indices, labels)
             self.state.total_labels += len(labels)
 
-            # step 5: retrain model (if train_fn provided)
             if self.train_fn is not None:
                 logger.info("Retraining model...")
                 training_data = self.pool.to_training_format()
                 self.model = self.train_fn(self.model, training_data)
 
-            # step 6: evaluate (if eval_fn provided)
             metrics = {}
             if (
                 self.eval_fn is not None
@@ -163,7 +155,6 @@ class ActiveLearner:
                         self.state.best_accuracy = metrics["accuracy"]
                 logger.info(f"Metrics: {metrics}")
 
-            # record history
             iter_record = {
                 "iteration": self.state.iteration,
                 "n_labeled": self.pool.n_labeled(),
@@ -175,7 +166,6 @@ class ActiveLearner:
             }
             self.state.history.append(iter_record)
 
-            # save checkpoint
             if self.state.iteration % self.config.save_every == 0:
                 self._save_checkpoint()
 
@@ -193,9 +183,22 @@ class ActiveLearner:
         """Compute acquisition scores for given pool indices."""
         self.model.eval()
 
+        if dist.is_initialized():
+            world_size = dist.get_world_size()
+            rank = dist.get_rank()
+
+            chunk_size = math.ceil(len(indices) / world_size)
+            start_idx = rank * chunk_size
+            end_idx = min(start_idx + chunk_size, len(indices))
+            local_indices = indices[start_idx:end_idx]
+        else:
+            local_indices = indices
+            world_size = 1
+            rank = 0
+
         dataset = PoolDataset(
             self.pool,
-            indices,
+            local_indices,
             self.tokenizer,
             max_length=2048,
         )
@@ -210,24 +213,23 @@ class ActiveLearner:
         all_features = []
 
         with torch.no_grad():
-            for batch in tqdm(dataloader, desc="Computing scores", leave=False):
+            for batch in tqdm(
+                dataloader, desc="Computing scores", leave=False, disable=rank != 0
+            ):
                 chosen_ids, chosen_mask, reject_ids, reject_mask, _ = batch
                 chosen_ids = chosen_ids.to(self.device)
                 chosen_mask = chosen_mask.to(self.device)
                 reject_ids = reject_ids.to(self.device)
                 reject_mask = reject_mask.to(self.device)
 
-                # get embeddings
                 chosen_embed = self._get_embedding(chosen_ids, chosen_mask)
                 reject_embed = self._get_embedding(reject_ids, reject_mask)
 
-                # compute acquisition scores
                 result = self.acquisition_fn(
                     chosen_embed, reject_embed, self.value_head_dim
                 )
-                all_scores.append(result.scores.cpu())
+                all_scores.append(result.scores)
 
-                # collect features for diverse selection
                 features = torch.cat(
                     [
                         chosen_embed.mean,
@@ -237,11 +239,62 @@ class ActiveLearner:
                     ],
                     dim=-1,
                 )
-                all_features.append(features.cpu())
+                all_features.append(features)
 
-        scores = torch.cat(all_scores, dim=0)
-        features = torch.cat(all_features, dim=0)
-        return scores, features
+        if len(all_scores) > 0:
+            local_scores = torch.cat(all_scores, dim=0)
+            local_features = torch.cat(all_features, dim=0)
+        else:
+            local_scores = torch.tensor([], device=self.device)
+            feature_dim = 4 * self.value_head_dim
+            local_features = torch.zeros((0, feature_dim), device=self.device)
+
+        if world_size > 1:
+
+            local_size = torch.tensor([local_scores.size(0)], device=self.device)
+            all_sizes = [torch.zeros_like(local_size) for _ in range(world_size)]
+            dist.all_gather(all_sizes, local_size)
+
+            max_size = max([s.item() for s in all_sizes])
+
+            padded_scores = torch.zeros(
+                max_size, device=self.device, dtype=local_scores.dtype
+            )
+            if local_scores.size(0) > 0:
+                padded_scores[: local_scores.size(0)] = local_scores
+
+            gathered_scores = [
+                torch.zeros_like(padded_scores) for _ in range(world_size)
+            ]
+            dist.all_gather(gathered_scores, padded_scores)
+
+            final_scores = []
+            for i, size in enumerate(all_sizes):
+                final_scores.append(gathered_scores[i][: size.item()])
+            scores = torch.cat(final_scores, dim=0)
+
+            padded_features = torch.zeros(
+                (max_size, local_features.size(1)),
+                device=self.device,
+                dtype=local_features.dtype,
+            )
+            if local_features.size(0) > 0:
+                padded_features[: local_features.size(0)] = local_features
+
+            gathered_features = [
+                torch.zeros_like(padded_features) for _ in range(world_size)
+            ]
+            dist.all_gather(gathered_features, padded_features)
+
+            final_features = []
+            for i, size in enumerate(all_sizes):
+                final_features.append(gathered_features[i][: size.item()])
+            features = torch.cat(final_features, dim=0)
+        else:
+            scores = local_scores
+            features = local_features
+
+        return scores.cpu(), features.cpu()
 
     def _get_embedding(
         self, input_ids: torch.Tensor, attention_mask: torch.Tensor
@@ -251,7 +304,6 @@ class ActiveLearner:
         if hasattr(model, "module"):
             model = model.module
 
-        # use the model's custom_forward method
         embedding, _ = model.custom_forward(
             input_ids, attention_mask=attention_mask, return_output=False
         )
@@ -269,7 +321,7 @@ class ActiveLearner:
             if pair.label is not None:
                 labels.append(pair.label)
             else:
-                # if no ground truth, default to 1 (chosen > rejected)
+
                 labels.append(1)
         return labels
 
@@ -316,7 +368,6 @@ class ActiveLearner:
         with open(path, "w") as f:
             json.dump(checkpoint, f, indent=2)
 
-        # also save pool state
         pool_path = os.path.join(self.config.output_dir, "pool_state.json")
         self.pool.save(pool_path)
 
