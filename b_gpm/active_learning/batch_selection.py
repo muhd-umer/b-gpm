@@ -75,8 +75,8 @@ class ClusterDiverseSelector(BatchSelector):
         if features is None or k <= 2:
             return TopKSelector().select(scores, features, k)
 
-        scores_np = scores.cpu().numpy()
-        features_np = features.cpu().numpy()
+        scores_np = scores.cpu().float().numpy()
+        features_np = features.cpu().float().numpy()
 
         # determine number of clusters
         n_clusters = self.n_clusters or max(2, int(np.sqrt(k)))
@@ -190,8 +190,8 @@ class GreedyCoreset(BatchSelector):
         if features is None:
             return TopKSelector().select(scores, features, k)
 
-        scores_np = scores.cpu().numpy()
-        features_np = features.cpu().numpy()
+        scores_np = scores.cpu().float().numpy()
+        features_np = features.cpu().float().numpy()
 
         # normalize features and scores
         features_norm = features_np / (
