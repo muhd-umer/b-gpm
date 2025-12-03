@@ -33,6 +33,7 @@ deepspeed train_rm_bgpm_al.py \
     --bayesian_max_logvar 1.0 \
     --bayesian_sample_mix_ratio 0.7 \
     --acquisition mv \
+    --al_retrain \
     --al_batch_size 256 \
     --al_max_iterations 20 \
     --al_max_labels 10000 \
