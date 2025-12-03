@@ -207,33 +207,34 @@ class PoolDataset(Dataset):
         self.indices = indices
         self.tokenizer = tokenizer
         self.max_length = max_length
+        self._preformatted = self._preformat_all()
+
+    def _preformat_all(self) -> List[Tuple[str, str]]:
+        """Pre-format all conversations to avoid repeated chat template calls."""
+        formatted = []
+        for idx in self.indices:
+            pair = self.pool.pairs[idx]
+            chosen_text = self._format_conversation(pair.prompt, pair.chosen)
+            rejected_text = self._format_conversation(pair.prompt, pair.rejected)
+            formatted.append((chosen_text, rejected_text))
+        return formatted
 
     def __len__(self) -> int:
         return len(self.indices)
 
     def __getitem__(self, idx: int) -> Dict[str, Any]:
-        pair = self.pool.pairs[self.indices[idx]]
+        chosen_text, rejected_text = self._preformatted[idx]
         return {
-            "prompt": pair.prompt,
-            "chosen": pair.chosen,
-            "rejected": pair.rejected,
+            "chosen_text": chosen_text,
+            "rejected_text": rejected_text,
             "pool_idx": self.indices[idx],
         }
 
     def collate_fn(self, batch: List[Dict]) -> Tuple:
         """Collate function for DataLoader."""
-        prompts = [b["prompt"] for b in batch]
-        chosen = [b["chosen"] for b in batch]
-        rejected = [b["rejected"] for b in batch]
+        chosen_texts = [b["chosen_text"] for b in batch]
+        rejected_texts = [b["rejected_text"] for b in batch]
         pool_indices = [b["pool_idx"] for b in batch]
-
-        # format as chat for tokenization
-        chosen_texts = [
-            self._format_conversation(p, c) for p, c in zip(prompts, chosen)
-        ]
-        rejected_texts = [
-            self._format_conversation(p, r) for p, r in zip(prompts, rejected)
-        ]
 
         chosen_tokens = self.tokenizer(
             chosen_texts,
