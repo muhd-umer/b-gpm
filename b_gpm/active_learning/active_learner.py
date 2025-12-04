@@ -42,7 +42,7 @@ class ActiveLearningConfig:
     eval_every: int = 5
     save_every: int = 10
 
-    output_dir: str = "./active_learning_results"
+    output_dir: str = "./al_results"
     checkpoint_dir: Optional[str] = None
 
 
