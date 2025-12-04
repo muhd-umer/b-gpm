@@ -19,6 +19,13 @@ from .pool import UnlabeledPool, PoolDataset, PreferencePair
 logger = logging.getLogger(__name__)
 
 
+def _is_rank_0() -> bool:
+    """Check if current process is rank 0."""
+    if dist.is_initialized():
+        return dist.get_rank() == 0
+    return True
+
+
 @dataclass
 class ActiveLearningConfig:
     """Configuration for active learning."""
@@ -103,25 +110,31 @@ class ActiveLearner:
         self.state = ActiveLearningState()
         self.device = next(model.parameters()).device
 
-        os.makedirs(self.config.output_dir, exist_ok=True)
+        if _is_rank_0():
+            os.makedirs(self.config.output_dir, exist_ok=True)
+
+    def _log(self, msg: str):
+        """Log message only on rank 0."""
+        if _is_rank_0():
+            logger.info(msg)
 
     def run(self) -> ActiveLearningState:
         """Run the active learning loop."""
-        logger.info("Starting active learning loop")
-        logger.info(f"Pool size: {len(self.pool)}, Labeled: {self.pool.n_labeled()}")
+        self._log("Starting active learning loop")
+        self._log(f"Pool size: {len(self.pool)}, Labeled: {self.pool.n_labeled()}")
 
         while not self._should_stop():
             self.state.iteration += 1
             iter_start = datetime.now()
 
-            logger.info(f"Iteration {self.state.iteration}")
+            self._log(f"Iteration {self.state.iteration}")
 
             unlabeled_indices = self.pool.get_unlabeled_indices()
             if len(unlabeled_indices) == 0:
-                logger.info("No more unlabeled samples")
+                self._log("No more unlabeled samples")
                 break
 
-            logger.info(
+            self._log(
                 f"Computing acquisition scores for {len(unlabeled_indices)} samples..."
             )
             scores, features = self._compute_acquisition_scores(unlabeled_indices)
@@ -130,7 +143,7 @@ class ActiveLearner:
             selected_local = self.batch_selector.select(scores, features, n_select)
             selected_pool_indices = [unlabeled_indices[i] for i in selected_local]
 
-            logger.info(f"Selected {len(selected_pool_indices)} samples for labeling")
+            self._log(f"Selected {len(selected_pool_indices)} samples for labeling")
 
             selected_pairs = self.pool.get_pairs(selected_pool_indices)
             labels = self.oracle(selected_pairs)
@@ -139,7 +152,7 @@ class ActiveLearner:
             self.state.total_labels += len(labels)
 
             if self.train_fn is not None:
-                logger.info("Retraining model...")
+                self._log("Retraining model...")
                 training_data = self.pool.to_training_format()
                 self.model = self.train_fn(self.model, training_data)
 
@@ -148,12 +161,12 @@ class ActiveLearner:
                 self.eval_fn is not None
                 and self.state.iteration % self.config.eval_every == 0
             ):
-                logger.info("Evaluating model...")
+                self._log("Evaluating model...")
                 metrics = self.eval_fn(self.model)
                 if "accuracy" in metrics:
                     if metrics["accuracy"] > self.state.best_accuracy:
                         self.state.best_accuracy = metrics["accuracy"]
-                logger.info(f"Metrics: {metrics}")
+                self._log(f"Metrics: {metrics}")
 
             iter_record = {
                 "iteration": self.state.iteration,
@@ -169,10 +182,10 @@ class ActiveLearner:
             if self.state.iteration % self.config.save_every == 0:
                 self._save_checkpoint()
 
-        logger.info(f"\nActive learning complete!")
-        logger.info(f"Total iterations: {self.state.iteration}")
-        logger.info(f"Total labels: {self.state.total_labels}")
-        logger.info(f"Best accuracy: {self.state.best_accuracy:.4f}")
+        self._log(f"\nActive learning complete!")
+        self._log(f"Total iterations: {self.state.iteration}")
+        self._log(f"Total labels: {self.state.total_labels}")
+        self._log(f"Best accuracy: {self.state.best_accuracy:.4f}")
 
         self._save_checkpoint()
         return self.state
@@ -328,28 +341,31 @@ class ActiveLearner:
     def _should_stop(self) -> bool:
         """Check if active learning should stop."""
         if self.state.iteration >= self.config.max_iterations:
-            logger.info("Reached max iterations")
+            self._log("Reached max iterations")
             return True
 
         if self.state.total_labels >= self.config.max_labels:
-            logger.info("Reached max labels")
+            self._log("Reached max labels")
             return True
 
         if (
             self.config.target_accuracy is not None
             and self.state.best_accuracy >= self.config.target_accuracy
         ):
-            logger.info(f"Reached target accuracy: {self.state.best_accuracy:.4f}")
+            self._log(f"Reached target accuracy: {self.state.best_accuracy:.4f}")
             return True
 
         if self.pool.n_unlabeled() == 0:
-            logger.info("Pool exhausted")
+            self._log("Pool exhausted")
             return True
 
         return False
 
     def _save_checkpoint(self) -> None:
         """Save active learning state."""
+        if not _is_rank_0():
+            return
+
         checkpoint = {
             "iteration": self.state.iteration,
             "total_labels": self.state.total_labels,
@@ -371,7 +387,7 @@ class ActiveLearner:
         pool_path = os.path.join(self.config.output_dir, "pool_state.json")
         self.pool.save(pool_path)
 
-        logger.info(f"Saved checkpoint to {path}")
+        self._log(f"Saved checkpoint to {path}")
 
     def get_acquisition_stats(self) -> Dict[str, Any]:
         """Get statistics about acquisition over iterations."""

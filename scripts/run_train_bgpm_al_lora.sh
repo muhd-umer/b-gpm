@@ -25,17 +25,17 @@ deepspeed train_rm_bgpm_al.py \
     --value_head_dim 6 \
     --is_general_preference \
     --is_bayesian_gpm \
-    --bayesian_kl_warmup_steps 20 \
-    --bayesian_max_kl_weight 0.005 \
+    --bayesian_kl_warmup_steps 10 \
+    --bayesian_max_kl_weight 0.007 \
     --bayesian_prior_variance 0.02 \
     --bayesian_sample_mix_ratio 0.7 \
     --acquisition mv \
     --al_retrain \
-    --al_batch_size 256 \
-    --al_max_iterations 20 \
-    --al_max_labels 10000 \
-    --al_eval_every 5 \
+    --al_batch_size 1000 \
+    --al_max_iterations 15 \
+    --al_max_labels 20000 \
+    --al_eval_every 3 \
     --al_save_every 5 \
-    --initial_labels 1000 \
+    --initial_labels 5000 \
     --use_diverse_selection \
     --use_wandb True

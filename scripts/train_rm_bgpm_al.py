@@ -110,13 +110,107 @@ def load_pool(args, strategy) -> UnlabeledPool:
     return pool
 
 
-def create_eval_fn(model, tokenizer, strategy, value_head_dim: int):
+def create_eval_fn(
+    pool: "UnlabeledPool",
+    tokenizer,
+    strategy,
+    value_head_dim: int,
+    eval_size: int = 500,
+):
     """Create evaluation function for active learning."""
 
     def eval_fn(model) -> Dict[str, float]:
         model.eval()
-        device = next(model.parameters()).device
-        return {"placeholder": 0.0}  # Actual eval done by trainer
+
+        underlying_model = model.module if hasattr(model, "module") else model
+        device = next(underlying_model.parameters()).device
+
+        labeled_pairs = pool.get_labeled_pairs()
+        if len(labeled_pairs) < 10:
+            return {"accuracy": 0.0, "n_eval": 0}
+
+        eval_pairs = labeled_pairs[-min(eval_size, len(labeled_pairs)) :]
+
+        correct = 0
+        total = 0
+
+        with torch.no_grad():
+            for pair in eval_pairs:
+                try:
+                    chosen_text = tokenizer.apply_chat_template(
+                        [
+                            {"role": "user", "content": pair.prompt},
+                            {"role": "assistant", "content": pair.chosen},
+                        ],
+                        tokenize=False,
+                        add_generation_prompt=False,
+                    )
+                    rejected_text = tokenizer.apply_chat_template(
+                        [
+                            {"role": "user", "content": pair.prompt},
+                            {"role": "assistant", "content": pair.rejected},
+                        ],
+                        tokenize=False,
+                        add_generation_prompt=False,
+                    )
+
+                    chosen_tokens = tokenizer(
+                        chosen_text,
+                        return_tensors="pt",
+                        truncation=True,
+                        max_length=2048,
+                    )
+                    rejected_tokens = tokenizer(
+                        rejected_text,
+                        return_tensors="pt",
+                        truncation=True,
+                        max_length=2048,
+                    )
+
+                    chosen_ids = chosen_tokens["input_ids"].to(device)
+                    chosen_mask = chosen_tokens["attention_mask"].to(device)
+                    rejected_ids = rejected_tokens["input_ids"].to(device)
+                    rejected_mask = rejected_tokens["attention_mask"].to(device)
+
+                    chosen_out, _ = underlying_model.custom_forward(
+                        chosen_ids, attention_mask=chosen_mask
+                    )
+                    rejected_out, _ = underlying_model.custom_forward(
+                        rejected_ids, attention_mask=rejected_mask
+                    )
+
+                    from b_gpm.models.bayesian_types import BayesianEmbedding
+
+                    if isinstance(chosen_out, BayesianEmbedding):
+                        mu_i = chosen_out.mean
+                        mu_j = rejected_out.mean
+                        dim = mu_i.shape[-1]
+                        R = torch.zeros((dim, dim), device=device, dtype=mu_i.dtype)
+                        for k in range(0, dim, 2):
+                            R[k, k + 1] = -1
+                            R[k + 1, k] = 1
+                        transformed = torch.matmul(mu_i, R.T)
+                        pref_score = (transformed * mu_j).sum(dim=-1)
+                        pred_chosen_better = pref_score > 0
+                    else:
+                        if chosen_out.dim() > 1:
+                            chosen_score = chosen_out.mean()
+                            rejected_score = rejected_out.mean()
+                        else:
+                            chosen_score = chosen_out.mean()
+                            rejected_score = rejected_out.mean()
+                        pred_chosen_better = chosen_score > rejected_score
+
+                    actual_chosen_better = pair.label == 1
+
+                    if pred_chosen_better.item() == actual_chosen_better:
+                        correct += 1
+                    total += 1
+                except Exception as e:
+                    continue
+
+        accuracy = correct / total if total > 0 else 0.0
+        return {"accuracy": accuracy, "n_eval": total, "correct": correct}
 
     return eval_fn
 
@@ -288,7 +382,7 @@ def train(args):
         output_dir=args.save_path,
     )
 
-    eval_fn = create_eval_fn(model, tokenizer, strategy, args.value_head_dim)
+    eval_fn = create_eval_fn(pool, tokenizer, strategy, args.value_head_dim)
     oracle = simulated_oracle_factory(pool)
     train_fn = create_train_fn(args, strategy, tokenizer) if args.al_retrain else None
 
