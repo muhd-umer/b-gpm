@@ -382,7 +382,7 @@ def train(args):
         output_dir=args.save_path,
     )
 
-    eval_fn = create_eval_fn(pool, tokenizer, strategy, args.value_head_dim)
+    eval_fn = None
     oracle = simulated_oracle_factory(pool)
     train_fn = create_train_fn(args, strategy, tokenizer) if args.al_retrain else None
 
