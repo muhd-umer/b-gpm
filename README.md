@@ -36,28 +36,28 @@ This project uses `uv` for dependency management.
 
 ## Repository Structure
 
-```python
+```bash
 b_gpm/
-├── active_learning/                    # active learning logic
-│   ├── acquisition.py                  # MV, BALD, UCB acquisition functions
-│   ├── active_learner.py               # main active learning loop
-│   ├── batch_selection.py              # diversity-aware batch selection strategies
-│   └── pool.py                         # management of unlabeled data pools
-├── datasets/                           # dataset loading and preprocessing
-├── models/                             # model definitions
-│   ├── bayesian_types.py               # probabilistic embedding data structures
-│   ├── loss.py                         # bayesian GPM Loss (ELBO), GPM Loss, etc.
-│   └── rw_model_general_preference.py  # main modeling code (Gemma/Qwen extensions)
-├── trainer/                            # training loops
+├── active_learning/                        # active learning logic
+│   ├── acquisition.py                      # MV, BALD, UCB acquisition functions
+│   ├── active_learner.py                   # main active learning loop
+│   ├── batch_selection.py                  # diversity-aware batch selection strategies
+│   └── pool.py                             # management of unlabeled data pools
+├── datasets/                               # dataset loading and preprocessing
+├── models/                                 # model definitions
+│   ├── bayesian_types.py                   # probabilistic embedding data structures
+│   ├── loss.py                             # bayesian GPM Loss (ELBO), GPM Loss, etc.
+│   └── rw_model_general_preference.py      # main modeling code (Gemma/Qwen extensions)
+├── trainer/                                # training loops
 │   └── rm_trainer_general_preference.py
-└── utils/                              # DeepSpeed and distributed utils
+└── utils/                                  # DeepSpeed and distributed utils
 
-scripts/                                # training and AL entry points
-├── train_rm_bgpm_al.py                 # active Learning training script
-└── train_rm_general_preference.py      # standard offline training script
+scripts/                                    # training and AL entry points
+├── train_rm_bgpm_al.py                     # active Learning training script
+└── train_rm_general_preference.py          # standard offline training script
 
-eval/                                   # inference and evaluation scripts
-rewardbench/                            # RewardBench evaluation integration
+eval/                                       # inference and evaluation scripts
+rewardbench/                                # RewardBench evaluation integration
 ```
 
 Other directories are, in the current state, unused or inherited from GPM.
