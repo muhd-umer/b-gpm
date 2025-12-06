@@ -1,6 +1,8 @@
 # Active Alignment with Bayesian General Preference Model
 
-This repository contains the official implementation of BGPM, a Bayesian extension of the general preference model (GPM) for sample-efficient downstream alignment of large language models (LLMs) using active learning.
+This repository contains the official implementation of BGPM, a Bayesian extension of the general preference model (GPM) for sample-efficient downstream alignment of LLMs using active learning.
+
+_The codebase is heavily adapted from [github.com/general-preference/general-preference-model](https://github.com/general-preference/general-preference-model))._
 
 ## Abstract
 
