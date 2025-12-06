@@ -7,7 +7,7 @@ deepspeed train_rm_general_preference.py \
 --eval_steps -1 \
 --accumulated_gradient 1 \
 --micro_train_batch_size 16 \
---pretrain Qwen/Qwen2.5-3B-Instruct \
+--pretrain google/gemma-2b-it \
 --bf16 \
 --max_epochs 2 \
 --max_len 2048 \
@@ -19,7 +19,7 @@ deepspeed train_rm_general_preference.py \
 --flash_attn \
 --gradient_checkpointing \
 --group_size 1 \
---value_head_dim 8 \
+--value_head_dim 12 \
 --save_best_model 2 \
 --ptx_loss_coef 0.1 \
 --train_split_ratio 0.98 \
