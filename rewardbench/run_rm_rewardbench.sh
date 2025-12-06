@@ -7,7 +7,7 @@ python run_rm_rewardbench.py \
 --is_custom_model \
 --do_not_save \
 --model_name "general-preference/GPM-Gemma-2B" \
---batch_size 32 \
+--batch_size 64 \
 --value_head_dim 8 \
 --max_length 4096 \
 --is_general_preference \

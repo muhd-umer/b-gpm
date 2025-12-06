@@ -1,4 +1,5 @@
 #!/bin/bash
+# note: value_head_dim is 12 for bgpm, i.e. 6 effectively as mean and variance are predicted
 
 # export CUDA_VISIBLE_DEVICES=0
 
@@ -19,7 +20,7 @@ deepspeed train_rm_bgpm_al.py \
     --flash_attn \
     --gradient_checkpointing \
     --group_size 1 \
-    --value_head_dim 6 \
+    --value_head_dim 12 \
     --is_general_preference \
     --is_bayesian_gpm \
     --bayesian_kl_warmup_steps 10 \
@@ -32,6 +33,6 @@ deepspeed train_rm_bgpm_al.py \
     --al_max_iterations 5 \
     --al_max_labels 30000 \
     --al_save_every 1 \
-    --initial_labels 15000 \
+    --initial_labels 8000 \
     --use_diverse_selection \
     --use_wandb True
