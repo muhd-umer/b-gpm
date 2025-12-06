@@ -19,20 +19,19 @@ deepspeed train_rm_bgpm_al.py \
     --flash_attn \
     --gradient_checkpointing \
     --group_size 1 \
-    --value_head_dim 12 \
+    --value_head_dim 6 \
     --is_general_preference \
     --is_bayesian_gpm \
-    --bayesian_kl_warmup_steps 15 \
-    --bayesian_max_kl_weight 0.008 \
-    --bayesian_prior_variance 0.04 \
-    --bayesian_sample_mix_ratio 0.5 \
+    --bayesian_kl_warmup_steps 10 \
+    --bayesian_max_kl_weight 0.007 \
+    --bayesian_prior_variance 0.02 \
+    --bayesian_sample_mix_ratio 0.7 \
     --acquisition mv \
     --al_retrain \
-    --al_batch_size 4000 \
+    --al_batch_size 2000 \
     --al_max_iterations 5 \
     --al_max_labels 30000 \
-    --al_eval_every 1 \
-    --al_save_every 2 \
-    --initial_labels 10000 \
+    --al_save_every 1 \
+    --initial_labels 15000 \
     --use_diverse_selection \
     --use_wandb True
