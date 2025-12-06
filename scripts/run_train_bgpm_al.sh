@@ -7,7 +7,7 @@ deepspeed train_rm_bgpm_al.py \
     --logging_steps 1 \
     --accumulated_gradient 1 \
     --micro_train_batch_size 16 \
-    --pretrain google/gemma-2-2b-it \
+    --pretrain Qwen/Qwen2.5-3B-Instruct \
     --bf16 \
     --max_len 2048 \
     --zero_stage 3 \
