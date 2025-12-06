@@ -10,7 +10,7 @@ Reinforcement learning from human feedback (RLHF) has become essential for align
 
 ![BGPM Architecture](resources/rms.png)
 
-*Figure 1: Illustration of (a) Bradley-Terry reward model, (b) PairPM, (c) General Preference Model (GPM), and (d) our proposed Bayesian GPM (BGPM) with probabilistic embeddings.*
+*Figure 1: Illustration of (a) Bradley-Terry reward model, (b) PairPM, (c) general preference model (GPM), and (d) our proposed Bayesian GPM (BGPM) with probabilistic embeddings.*
 
 ## Installation
 
@@ -36,7 +36,7 @@ This project uses `uv` for dependency management.
 
 ## Repository Structure
 
-```text
+```python
 b_gpm/
 ├── active_learning/                    # active learning logic
 │   ├── acquisition.py                  # MV, BALD, UCB acquisition functions
