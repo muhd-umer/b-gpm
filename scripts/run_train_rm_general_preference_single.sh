@@ -1,7 +1,7 @@
 # export CUDA_VISIBLE_DEVICES=0
 
 deepspeed train_rm_general_preference.py \
---save_path ../results/saved_model/2b_gemma/rm \
+--save_path ../results/saved_model/2b_gemma_bsmr00/rm \
 --save_steps -1 \
 --logging_steps 1 \
 --eval_steps -1 \
@@ -20,17 +20,16 @@ deepspeed train_rm_general_preference.py \
 --gradient_checkpointing \
 --group_size 1 \
 --value_head_dim 12 \
---save_best_model 2 \
 --ptx_loss_coef 0.1 \
---train_split_ratio 0.98 \
+--train_split_ratio 1.0 \
 --is_general_preference \
 --is_bayesian_gpm \
---bayesian_kl_warmup_steps 150 \
+--bayesian_kl_warmup_steps 200 \
 --bayesian_max_kl_weight 0.002 \
 --bayesian_prior_variance 0.03 \
 --bayesian_init_logvar -4.0 \
 --bayesian_min_logvar -8.0 \
 --bayesian_max_logvar 1.0 \
---bayesian_sample_mix_ratio 0.5 \
+--bayesian_sample_mix_ratio 0.0 \
 --save_on_epoch_end \
 --use_wandb True
