@@ -6,7 +6,7 @@ python run_rm_rewardbench.py \
 --flash_attn \
 --is_custom_model \
 --do_not_save \
---model_name "general-preference/GPM-Gemma-2B" \
+--model_name "muhd-umer/2b_gemma_bgpm" \
 --batch_size 32 \
 --value_head_dim 12 \
 --max_length 4096 \

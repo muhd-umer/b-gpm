@@ -1,5 +1,5 @@
 
-deepspeed --force_multi --hostfile hostfile train_rm_general_preference.py \
+deepspeed --force_multi --hostfile hostfile train_rm_bgpm.py \
 --save_path ../results/saved_model/2b_gemma/rm \
 --save_steps -1 \
 --logging_steps 1 \

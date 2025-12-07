@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-deepspeed train_rm_general_preference.py \
+deepspeed train_rm_bgpm.py \
 --save_path ../results/saved_model/2b_gemma_lora/rm \
 --save_steps -1 \
 --logging_steps 1 \
