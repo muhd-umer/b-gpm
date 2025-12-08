@@ -1,6 +1,6 @@
 export CUDA_VISIBLE_DEVICES=0
 python run_rm_rewardbench.py \
---model '../results/2b_gemma_bsmr00/rm' \
+--model muhd-umer/bgpm-gemma-2-2b \
 --chat_template raw \
 --bf16 \
 --flash_attn \
