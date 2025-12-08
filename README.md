@@ -66,7 +66,7 @@ Other directories are, in the current state, unused or inherited from GPM.
 
 ## Usage
 
-### Offline training (Standard GPM/BGPM)
+### Offline training
 To train a model on a static dataset without active learning:
 
 ```bash
@@ -106,7 +106,7 @@ Evaluation scripts are provided in `eval/` and `rewardbench/`.
 
 ```bash
 python rewardbench/run_rm_rewardbench.py \
-    --model "output/bgpm_active_learning" \
+    --model "local_or_hf_model_path" \
     --is_bayesian_gpm \
     --value_head_dim 6 \
     ...
